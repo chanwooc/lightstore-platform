@@ -9,9 +9,9 @@ import Clocks::*;
 import Leds::*;
 
 //import ConnectalMemory::*;
-import MemTypes::*;
-import MemReadEngine::*;
-import MemWriteEngine::*;
+//import ConnectalMemTypes::*;
+//import MemReadEngine::*;
+//import MemWriteEngine::*;
 import Pipe::*;
 
 import AuroraGearbox::*;
