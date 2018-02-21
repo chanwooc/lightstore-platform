@@ -34,7 +34,7 @@ import List::*;
 
 import ConnectalMemory::*;
 import ConnectalConfig::*;
-import MemTypes::*;
+import ConnectalMemTypes::*;
 import MemReadEngine::*;
 import MemWriteEngine::*;
 import Pipe::*;

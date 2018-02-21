@@ -18,6 +18,15 @@ PLATFORM_NUMBER_OF_MASTERS=2
 NUMBER_OF_RENGINES=2 # Flash Write (DMA Read)
 NUMBER_OF_WENGINES=4 # Flash Read  (DMA Write)
 
+# Connectal Main Clock: 200 MHz
+# Derived clock for Aurora Init Clock (110 MHz, T=9.090)
+CONNECTALFLAGS += -D DataBusWidth=128
+CONNECTALFLAGS += -D NumReadClients=$(NUMBER_OF_RENGINES) -D NumWriteClients=$(NUMBER_OF_WENGINES)
+CONNECTALFLAGS += -D IMPORT_HOST_CLOCKS
+CONNECTALFLAGS += --mainclockperiod=5 --derivedclockperiod=9.090
+CONNECTALFLAGS += -D BYPASS_AXI_SLAVE=2 # To bypass HPC0,1
+CONNECTALFLAGS += -D DEFAULT_NOPROGRAM=1 # To suppress automatic fpga program
+
 BSVFILES = Main.bsv \
 	../../lib/AuroraCommon.bsv \
 	../../modules/aurora_intra/AuroraIntraZcu.bsv \
@@ -27,12 +36,6 @@ BSVFILES = Main.bsv \
 
 CPPFILES=main.cpp
 
-# Connectal Main Clock: 200 MHz
-# Derived clock for Aurora Init Clock (110 MHz, T=9.091)
-CONNECTALFLAGS += -D DataBusWidth=128
-CONNECTALFLAGS += -D NumReadClients=$(NUMBER_OF_RENGINES) -D NumWriteClients=$(NUMBER_OF_WENGINES)
-CONNECTALFLAGS += -D IMPORT_HOST_CLOCKS
-CONNECTALFLAGS += --mainclockperiod=5 --derivedclockperiod=9.091
 
 ifeq ($(BOARD), bluesim)
 CONNECTALFLAGS += -D BSIM
