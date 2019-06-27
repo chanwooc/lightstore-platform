@@ -24,8 +24,9 @@ CONNECTALFLAGS += -D DataBusWidth=128
 CONNECTALFLAGS += -D NumReadClients=$(NUMBER_OF_RENGINES) -D NumWriteClients=$(NUMBER_OF_WENGINES)
 CONNECTALFLAGS += -D IMPORT_HOST_CLOCKS
 CONNECTALFLAGS += --mainclockperiod=5 --derivedclockperiod=9.090
-CONNECTALFLAGS += -D BYPASS_AXI_SLAVE=2 # To bypass HPC0,1
-CONNECTALFLAGS += -D DEFAULT_NOPROGRAM=1 # To suppress automatic fpga program
+CONNECTALFLAGS += -D ZCU_AXI_SLAVE_START=2  # To bypass HPC0,1
+CONNECTALFLAGS += -D DEFAULT_NOPROGRAM=1    # To suppress automatic fpga program
+CONNECTALFLAGS += -D MMU_INDEX_WIDTH=13     # To support larger MMU table (portalAlloc up to 8GB)
 
 BSVFILES = Main.bsv \
 	../../lib/AuroraCommon.bsv \
