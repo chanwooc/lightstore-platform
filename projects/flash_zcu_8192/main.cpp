@@ -17,7 +17,7 @@
 #include "FlashRequest.h"
 
 // Test Definitions
-// #define TEST_ERASE_ALL    : eraseAll.exe's only test
+// #define TEST_ERASE_ALL        // eraseAll.exe's only test
 // #define TEST_MINI_FUNCTION
 #define TEST_READ_SPEED
 
