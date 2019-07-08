@@ -548,16 +548,16 @@ int main(int argc, const char **argv)
         verbose_req = false;
         verbose_resp = false;
 
-        int repeat = 10;
+        int repeat = 4;
         int blkStart = 0;
-        int blkCnt = 512;
+        int blkCnt = 256;
         int pageStart = 0;
         int pageCnt = 64;
 
         timespec start, now;
         clock_gettime(CLOCK_REALTIME, &start);
 
-        fprintf(stderr, "[TEST] READ SPEED (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", blkStart, blkCnt, pageStart, pageCnt); 
+        fprintf(stderr, "[TEST] READ SPEED (Repeat: %d, BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", repeat, blkStart, blkCnt, pageStart, pageCnt); 
         testRead(device, blkStart, blkCnt, pageStart, pageCnt, false /* checkRead */, repeat);
 
         fprintf(stderr, "[TEST] READ SPEED DONE!\n" ); 
