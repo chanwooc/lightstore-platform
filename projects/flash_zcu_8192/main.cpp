@@ -552,7 +552,7 @@ int main(int argc, const char **argv)
         int blkStart = 0;
         int blkCnt = 256;
         int pageStart = 0;
-        int pageCnt = 64;
+        int pageCnt = 32;
 
         timespec start, now;
         clock_gettime(CLOCK_REALTIME, &start);
