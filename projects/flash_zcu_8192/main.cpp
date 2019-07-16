@@ -17,7 +17,7 @@
 #include "FlashRequest.h"
 
 // Test Definitions
-// #define TEST_ERASE_ALL        // eraseAll.exe's only test
+// #define TEST_ERASE_ALL		 // eraseAll.exe's only test
 // #define TEST_MINI_FUNCTION
 #define TEST_READ_SPEED
 
@@ -25,8 +25,8 @@
 #define DEFAULT_VERBOSE_RESP false
 
 // Device Value (For test specific values, go to main)
-// 256 pages/blk    => pages 0, 1, 2 .. append only write
-// 4096 blks/chip   => erasure on blocks
+// 256 pages/blk	=> pages 0, 1, 2 .. append only write
+// 4096 blks/chip	=> erasure on blocks
 // 8 chips/bus
 // 8 buses
 #define PAGES_PER_BLOCK 256
@@ -42,18 +42,18 @@
 #define NUM_TAGS 128
 
 typedef enum {
-    UNINIT,
-    ERASED,
-    WRITTEN
+	UNINIT,
+	ERASED,
+	WRITTEN
 } FlashStatusT;
 
 typedef struct {
-    bool checkRead;
-    bool busy;
-    int bus;
-    int chip;
-    int block;
-    int page;
+	bool checkRead;
+	bool busy;
+	int bus;
+	int chip;
+	int block;
+	int page;
 } TagTableEntry;
 
 FlashRequestProxy *device;
@@ -85,137 +85,137 @@ int curWritesInFlight = 0;
 int curErasesInFlight = 0;
 
 double timespec_diff_sec( timespec start, timespec end ) {
-    double t = end.tv_sec - start.tv_sec;
-    t += ((double)(end.tv_nsec - start.tv_nsec)/1000000000L);
-    return t;
+	double t = end.tv_sec - start.tv_sec;
+	t += ((double)(end.tv_nsec - start.tv_nsec)/1000000000L);
+	return t;
 }
 
 unsigned int hashAddrToData(int bus, int chip, int blk, int word) {
-    return ((bus<<24) + (chip<<20) + (blk<<16) + word);
+	return ((bus<<24) + (chip<<20) + (blk<<16) + word);
 }
 
 bool checkReadData(int tag) {
-    bool pass = true;
-    TagTableEntry e = readTagTable[tag];
+	bool pass = true;
+	TagTableEntry e = readTagTable[tag];
 
-    unsigned int goldenData;
-    if (flashStatus[e.bus][e.chip][e.block]==WRITTEN) {
-        int numErrors = 0;
-        for (unsigned int word=0; word<FPAGE_SIZE_VALID/sizeof(unsigned int); word++) {
-            goldenData = hashAddrToData(e.bus, e.chip, e.block, word);
-            if (goldenData != readBuffers[tag][word]) {
-                fprintf(stderr, "LOG: **ERROR: read data mismatch! tag=%d, %d %d %d %d, word=%d, Expected: %x, read: %x\n", tag, e.bus, e.chip, e.block, e.page, word, goldenData, readBuffers[tag][word]);
-                numErrors++;
-                pass = false;
-                break;
-            }
-        }
-        if (numErrors==0) {
-            if(verbose_resp) fprintf(stderr, "LOG: Read data check passed on tag=%d!\n", tag);
-        }
-    }
-    else if (flashStatus[e.bus][e.chip][e.block]==ERASED) {
-        if (readBuffers[tag][0]==(unsigned int)-1) {
-            if(verbose_resp) fprintf(stderr, "LOG: Read check pass on erased block!\n");
-        }
-        else if (readBuffers[tag][0]==0) {
-            fprintf(stderr, "LOG: Warning: potential bad block, read erased data 0\n");
-            pass = false;
-        }
-        else {
-            fprintf(stderr, "LOG: **ERROR: read data mismatch! Expected: ERASED, read: %x\n", readBuffers[tag][0]);
-            pass = false;
-        }
-    }
-    else {
-        fprintf(stderr, "LOG: **ERROR: flash block state unknown. Did you erase before write?\n");
-        pass = false;
-    }
-    return pass;
+	unsigned int goldenData;
+	if (flashStatus[e.bus][e.chip][e.block]==WRITTEN) {
+		int numErrors = 0;
+		for (unsigned int word=0; word<FPAGE_SIZE_VALID/sizeof(unsigned int); word++) {
+			goldenData = hashAddrToData(e.bus, e.chip, e.block, word);
+			if (goldenData != readBuffers[tag][word]) {
+				fprintf(stderr, "LOG: **ERROR: read data mismatch! tag=%d, %d %d %d %d, word=%d, Expected: %x, read: %x\n", tag, e.bus, e.chip, e.block, e.page, word, goldenData, readBuffers[tag][word]);
+				numErrors++;
+				pass = false;
+				break;
+			}
+		}
+		if (numErrors==0) {
+			if(verbose_resp) fprintf(stderr, "LOG: Read data check passed on tag=%d!\n", tag);
+		}
+	}
+	else if (flashStatus[e.bus][e.chip][e.block]==ERASED) {
+		if (readBuffers[tag][0]==(unsigned int)-1) {
+			if(verbose_resp) fprintf(stderr, "LOG: Read check pass on erased block!\n");
+		}
+		else if (readBuffers[tag][0]==0) {
+			fprintf(stderr, "LOG: Warning: potential bad block, read erased data 0\n");
+			pass = false;
+		}
+		else {
+			fprintf(stderr, "LOG: **ERROR: read data mismatch! Expected: ERASED, read: %x\n", readBuffers[tag][0]);
+			pass = false;
+		}
+	}
+	else {
+		fprintf(stderr, "LOG: **ERROR: flash block state unknown. Did you erase before write?\n");
+		pass = false;
+	}
+	return pass;
 }
 
 class FlashIndication: public FlashIndicationWrapper {
-    public:
-        FlashIndication(unsigned int id) : FlashIndicationWrapper(id){}
+	public:
+		FlashIndication(unsigned int id) : FlashIndicationWrapper(id){}
 
-        virtual void readDone(unsigned int tag) {
+		virtual void readDone(unsigned int tag) {
 
-            bool readPassed = false;
+			bool readPassed = false;
 
-            if ( verbose_resp ) {
-                fprintf(stderr, "LOG: pagedone: tag=%d; inflight=%d\n", tag, curReadsInFlight );
-                fflush(stderr);
-            }
+			if ( verbose_resp ) {
+				fprintf(stderr, "LOG: pagedone: tag=%d; inflight=%d\n", tag, curReadsInFlight );
+				fflush(stderr);
+			}
 
-            if (readTagTable[tag].checkRead) readPassed = checkReadData(tag);
+			if (readTagTable[tag].checkRead) readPassed = checkReadData(tag);
 
-            pthread_mutex_lock(&flashReqMutex);
-            if ( readTagTable[tag].checkRead && readPassed == false ) {
-                testPassed = false;
-                fprintf(stderr, "LOG: **ERROR: check read data failed @ tag=%d\n",tag);
-            }
-            if ( curReadsInFlight < 0 ) {
-                fprintf(stderr, "LOG: **ERROR: Read requests in flight cannot be negative %d\n", curReadsInFlight );
-            }
-            if ( readTagTable[tag].busy == false ) {
-                fprintf(stderr, "LOG: **ERROR: received unused buffer read done (duplicate) tag=%d\n", tag);
-                testPassed = false;
-            } else {
-                curReadsInFlight --;
-            }
+			pthread_mutex_lock(&flashReqMutex);
+			if ( readTagTable[tag].checkRead && readPassed == false ) {
+				testPassed = false;
+				fprintf(stderr, "LOG: **ERROR: check read data failed @ tag=%d\n",tag);
+			}
+			if ( curReadsInFlight < 0 ) {
+				fprintf(stderr, "LOG: **ERROR: Read requests in flight cannot be negative %d\n", curReadsInFlight );
+			}
+			if ( readTagTable[tag].busy == false ) {
+				fprintf(stderr, "LOG: **ERROR: received unused buffer read done (duplicate) tag=%d\n", tag);
+				testPassed = false;
+			} else {
+				curReadsInFlight --;
+			}
 
-            readTagTable[tag].busy = false;
+			readTagTable[tag].busy = false;
 
-            pthread_mutex_unlock(&flashReqMutex);
-        }
+			pthread_mutex_unlock(&flashReqMutex);
+		}
 
-        virtual void writeDone(unsigned int tag) {
-            if ( verbose_resp ) {
-                fprintf(stderr, "LOG: writedone, tag=%d\n", tag);
-                fflush(stderr);
-            }
+		virtual void writeDone(unsigned int tag) {
+			if ( verbose_resp ) {
+				fprintf(stderr, "LOG: writedone, tag=%d\n", tag);
+				fflush(stderr);
+			}
 
-            pthread_mutex_lock(&flashReqMutex);
-            if ( curWritesInFlight < 0 ) {
-                fprintf(stderr, "LOG: **ERROR: Write requests in flight cannot be negative %d\n", curWritesInFlight );
-            }
-            if ( writeTagTable[tag].busy == false) {
-                fprintf(stderr, "LOG: **ERROR: received unknown write done (duplicate) tag=%d\n", tag);
-                testPassed = false;
-            } else {
-                curWritesInFlight --;
-            }
-            writeTagTable[tag].busy = false;
-            pthread_mutex_unlock(&flashReqMutex);
+			pthread_mutex_lock(&flashReqMutex);
+			if ( curWritesInFlight < 0 ) {
+				fprintf(stderr, "LOG: **ERROR: Write requests in flight cannot be negative %d\n", curWritesInFlight );
+			}
+			if ( writeTagTable[tag].busy == false) {
+				fprintf(stderr, "LOG: **ERROR: received unknown write done (duplicate) tag=%d\n", tag);
+				testPassed = false;
+			} else {
+				curWritesInFlight --;
+			}
+			writeTagTable[tag].busy = false;
+			pthread_mutex_unlock(&flashReqMutex);
 
-            fflush(stderr);
-        }
+			fflush(stderr);
+		}
 
-        virtual void eraseDone(unsigned int tag, unsigned int status) {
-            if ( verbose_resp ) {
-                fprintf(stderr, "LOG: eraseDone, tag=%d, status=%d\n", tag, status); fflush(stdout);
-            }
+		virtual void eraseDone(unsigned int tag, unsigned int status) {
+			if ( verbose_resp ) {
+				fprintf(stderr, "LOG: eraseDone, tag=%d, status=%d\n", tag, status); fflush(stdout);
+			}
 
-            if (status != 0) {
-                fprintf(stderr, "LOG: detected bad block with tag = %d\n", tag);
-            }
-            pthread_mutex_lock(&flashReqMutex);
-            curErasesInFlight--;
-            if ( curErasesInFlight < 0 ) {
-                fprintf(stderr, "LOG: **ERROR: erase requests in flight cannot be negative %d\n", curErasesInFlight );
-                curErasesInFlight = 0;
-            }
-            if ( eraseTagTable[tag].busy == false ) {
-                fprintf(stderr, "LOG: **ERROR: received unused tag erase done %d\n", tag);
-                testPassed = false;
-            }
-            eraseTagTable[tag].busy = false;
-            pthread_mutex_unlock(&flashReqMutex);
-        }
+			if (status != 0) {
+				fprintf(stderr, "LOG: detected bad block with tag = %d\n", tag);
+			}
+			pthread_mutex_lock(&flashReqMutex);
+			curErasesInFlight--;
+			if ( curErasesInFlight < 0 ) {
+				fprintf(stderr, "LOG: **ERROR: erase requests in flight cannot be negative %d\n", curErasesInFlight );
+				curErasesInFlight = 0;
+			}
+			if ( eraseTagTable[tag].busy == false ) {
+				fprintf(stderr, "LOG: **ERROR: received unused tag erase done %d\n", tag);
+				testPassed = false;
+			}
+			eraseTagTable[tag].busy = false;
+			pthread_mutex_unlock(&flashReqMutex);
+		}
 
-        virtual void debugDumpResp (unsigned int debug0, unsigned int debug1,  unsigned int debug2, unsigned int debug3, unsigned int debug4, unsigned int debug5) {
-            fprintf(stderr, "LOG: DEBUG DUMP: gearSend = %d, gearRec = %d, aurSend = %d, aurRec = %d, readSend=%d, writeSend=%d\n", debug0, debug1, debug2, debug3, debug4, debug5);
-        }
+		virtual void debugDumpResp (unsigned int debug0, unsigned int debug1,  unsigned int debug2, unsigned int debug3, unsigned int debug4, unsigned int debug5) {
+			fprintf(stderr, "LOG: DEBUG DUMP: gearSend = %d, gearRec = %d, aurSend = %d, aurRec = %d, readSend=%d, writeSend=%d\n", debug0, debug1, debug2, debug3, debug4, debug5);
+		}
 };
 
 
@@ -225,355 +225,355 @@ int getNumErasesInFlight() { return curErasesInFlight; }
 
 //TODO: more efficient locking
 int waitIdleEraseTag() {
-    int tag = -1;
-    while ( tag < 0 ) {
-        pthread_mutex_lock(&flashReqMutex);
-        for ( int t = 0; t < NUM_TAGS; t++ ) {
-            if ( !eraseTagTable[t].busy ) {
-                eraseTagTable[t].busy = true;
-                tag = t;
-                break;
-            }
-        }
-        pthread_mutex_unlock(&flashReqMutex);
-    }
-    return tag;
+	int tag = -1;
+	while ( tag < 0 ) {
+		pthread_mutex_lock(&flashReqMutex);
+		for ( int t = 0; t < NUM_TAGS; t++ ) {
+			if ( !eraseTagTable[t].busy ) {
+				eraseTagTable[t].busy = true;
+				tag = t;
+				break;
+			}
+		}
+		pthread_mutex_unlock(&flashReqMutex);
+	}
+	return tag;
 }
 
 //TODO: more efficient locking
 int waitIdleWriteBuffer() {
-    int tag = -1;
-    while ( tag < 0 ) {
-        pthread_mutex_lock(&flashReqMutex);
-        for ( int t = 0; t < NUM_TAGS; t++ ) {
-            if ( !writeTagTable[t].busy) {
-                writeTagTable[t].busy = true;
-                tag = t;
-                break;
-            }
-        }
-        pthread_mutex_unlock(&flashReqMutex);
-    }
-    return tag;
+	int tag = -1;
+	while ( tag < 0 ) {
+		pthread_mutex_lock(&flashReqMutex);
+		for ( int t = 0; t < NUM_TAGS; t++ ) {
+			if ( !writeTagTable[t].busy) {
+				writeTagTable[t].busy = true;
+				tag = t;
+				break;
+			}
+		}
+		pthread_mutex_unlock(&flashReqMutex);
+	}
+	return tag;
 }
 
 //TODO: more efficient locking
 int waitIdleReadBuffer() {
-    int tag = -1;
-    while ( tag < 0 ) {
-        pthread_mutex_lock(&flashReqMutex);
-        for ( int t = 0; t < NUM_TAGS; t++ ) {
-            if ( !readTagTable[t].busy ) {
-                readTagTable[t].busy = true;
-                tag = t;
-                break;
-            }
-        }
-        pthread_mutex_unlock(&flashReqMutex);
-    }
-    return tag;
+	int tag = -1;
+	while ( tag < 0 ) {
+		pthread_mutex_lock(&flashReqMutex);
+		for ( int t = 0; t < NUM_TAGS; t++ ) {
+			if ( !readTagTable[t].busy ) {
+				readTagTable[t].busy = true;
+				tag = t;
+				break;
+			}
+		}
+		pthread_mutex_unlock(&flashReqMutex);
+	}
+	return tag;
 }
 
 void eraseBlock(uint32_t bus, uint32_t chip, uint32_t block, uint32_t tag) {
-    pthread_mutex_lock(&flashReqMutex);
-    curErasesInFlight ++;
-    flashStatus[bus][chip][block] = ERASED;
-    pthread_mutex_unlock(&flashReqMutex);
+	pthread_mutex_lock(&flashReqMutex);
+	curErasesInFlight ++;
+	flashStatus[bus][chip][block] = ERASED;
+	pthread_mutex_unlock(&flashReqMutex);
 
-    if ( verbose_req ) fprintf(stderr, "LOG: sending erase block request with tag=%d @%d %d %d 0\n", tag, bus, chip, block );
-    device->eraseBlock(bus,chip,block,tag);
+	if ( verbose_req ) fprintf(stderr, "LOG: sending erase block request with tag=%d @%d %d %d 0\n", tag, bus, chip, block );
+	device->eraseBlock(bus,chip,block,tag);
 }
 
 void writePage(uint32_t bus, uint32_t chip, uint32_t block, uint32_t page, uint32_t tag) {
-    pthread_mutex_lock(&flashReqMutex);
-    curWritesInFlight ++;
-    flashStatus[bus][chip][block] = WRITTEN;
-    pthread_mutex_unlock(&flashReqMutex);
+	pthread_mutex_lock(&flashReqMutex);
+	curWritesInFlight ++;
+	flashStatus[bus][chip][block] = WRITTEN;
+	pthread_mutex_unlock(&flashReqMutex);
 
-    if ( verbose_req ) fprintf(stderr, "LOG: sending write page request with tag=%d @%d %d %d %d\n", tag, bus, chip, block, page );
-    device->writePage(bus,chip,block,page,tag,tag*FPAGE_SIZE);
+	if ( verbose_req ) fprintf(stderr, "LOG: sending write page request with tag=%d @%d %d %d %d\n", tag, bus, chip, block, page );
+	device->writePage(bus,chip,block,page,tag,tag*FPAGE_SIZE);
 }
 
 void readPage(uint32_t bus, uint32_t chip, uint32_t block, uint32_t page, uint32_t tag, bool checkRead=false) {
-    pthread_mutex_lock(&flashReqMutex);
-    curReadsInFlight ++;
-    readTagTable[tag].bus = bus;
-    readTagTable[tag].chip = chip;
-    readTagTable[tag].block = block;
-    readTagTable[tag].page = page;
-    readTagTable[tag].checkRead = checkRead;
-    pthread_mutex_unlock(&flashReqMutex);
+	pthread_mutex_lock(&flashReqMutex);
+	curReadsInFlight ++;
+	readTagTable[tag].bus = bus;
+	readTagTable[tag].chip = chip;
+	readTagTable[tag].block = block;
+	readTagTable[tag].page = page;
+	readTagTable[tag].checkRead = checkRead;
+	pthread_mutex_unlock(&flashReqMutex);
 
-    if ( verbose_req ) fprintf(stderr, "LOG: sending read page request with tag=%d @%d %d %d %d\n", tag, bus, chip, block, page );
-    device->readPage(bus,chip,block,page,tag,tag*FPAGE_SIZE);
+	if ( verbose_req ) fprintf(stderr, "LOG: sending read page request with tag=%d @%d %d %d %d\n", tag, bus, chip, block, page );
+	device->readPage(bus,chip,block,page,tag,tag*FPAGE_SIZE);
 }
 
 // Use all BUSES & CHIPS in the device
 // Can designate the range of blocks -> incl [blkStart, blkStart + blkCnt) non-incl
-//   Valid block # range: 0 ~ BLOCKS_PER_CHIP-1 (=4097)
+//	 Valid block # range: 0 ~ BLOCKS_PER_CHIP-1 (=4097)
 void testErase(FlashRequestProxy* device, int blkStart, int blkCnt) {
-    // blkEnd can be at most BLOCKS_PER_CHIP-1
-    int blkEnd = blkStart + blkCnt;
-    if (blkEnd > BLOCKS_PER_CHIP) blkEnd = BLOCKS_PER_CHIP;
+	// blkEnd can be at most BLOCKS_PER_CHIP-1
+	int blkEnd = blkStart + blkCnt;
+	if (blkEnd > BLOCKS_PER_CHIP) blkEnd = BLOCKS_PER_CHIP;
 
-    for (int blk = blkStart; blk < blkEnd; blk++){
-        for (int chip = 0; chip < CHIPS_PER_BUS; chip++){
-            for (int bus = 0; bus < NUM_BUSES; bus++){
-                eraseBlock(bus, chip, blk, waitIdleEraseTag());
-            }
-        }
-    }
+	for (int blk = blkStart; blk < blkEnd; blk++){
+		for (int chip = 0; chip < CHIPS_PER_BUS; chip++){
+			for (int bus = 0; bus < NUM_BUSES; bus++){
+				eraseBlock(bus, chip, blk, waitIdleEraseTag());
+			}
+		}
+	}
 
-    int elapsed = 10000;
-    while (true) {
-        usleep(100);
-        if (elapsed == 0) {
-            elapsed=10000;
-            device->debugDumpReq(0);
-        }
-        else {
-            elapsed--;
-        }
-        if ( getNumErasesInFlight() == 0 ) break;
-    }
+	int elapsed = 10000;
+	while (true) {
+		usleep(100);
+		if (elapsed == 0) {
+			elapsed=10000;
+			device->debugDumpReq(0);
+		}
+		else {
+			elapsed--;
+		}
+		if ( getNumErasesInFlight() == 0 ) break;
+	}
 }
 
 // Use all BUSES & CHIPS in the device
 // Can designate the range of blocks -> incl [blkStart, blkStart + blkCnt) non-incl
 // Can designate the range of pages  -> incl [pageStart, pageStart + pageCnt) non-incl
-//   Valid block # range: 0 ~ BLOCKS_PER_CHIP-1
-//   Valid page  # range: 0 ~ PAGES_PER_BLOCK-1
+//	 Valid block # range: 0 ~ BLOCKS_PER_CHIP-1
+//	 Valid page  # range: 0 ~ PAGES_PER_BLOCK-1
 void testRead(FlashRequestProxy* device, int blkStart, int blkCnt, int pageStart, int pageCnt, bool checkRead=false, int repeat=1) {
-    // blkEnd can be at most BLOCKS_PER_CHIP-1
-    int blkEnd = blkStart + blkCnt;
-    if (blkEnd > BLOCKS_PER_CHIP) blkEnd = BLOCKS_PER_CHIP;
+	// blkEnd can be at most BLOCKS_PER_CHIP-1
+	int blkEnd = blkStart + blkCnt;
+	if (blkEnd > BLOCKS_PER_CHIP) blkEnd = BLOCKS_PER_CHIP;
 
-    // pageEnd can be at most BLOCKS_PER_CHIP-1
-    int pageEnd = pageStart + pageCnt;
-    if (pageEnd > PAGES_PER_BLOCK) pageEnd = PAGES_PER_BLOCK;
-    
-    for (int rep = 0; rep < repeat; rep++){
-        for (int page = pageStart; page < pageEnd; page++) {
-            for (int blk = blkStart; blk < blkEnd; blk++){
-                for (int chip = 0; chip < CHIPS_PER_BUS; chip++){
-                    for (int bus = 0; bus < NUM_BUSES; bus++){
-                        readPage(bus, chip, blk, page, waitIdleReadBuffer(), checkRead);
-                    }
-                }
-            }
-        }
-    }
+	// pageEnd can be at most BLOCKS_PER_CHIP-1
+	int pageEnd = pageStart + pageCnt;
+	if (pageEnd > PAGES_PER_BLOCK) pageEnd = PAGES_PER_BLOCK;
+	
+	for (int rep = 0; rep < repeat; rep++){
+		for (int page = pageStart; page < pageEnd; page++) {
+			for (int blk = blkStart; blk < blkEnd; blk++){
+				for (int chip = 0; chip < CHIPS_PER_BUS; chip++){
+					for (int bus = 0; bus < NUM_BUSES; bus++){
+						readPage(bus, chip, blk, page, waitIdleReadBuffer(), checkRead);
+					}
+				}
+			}
+		}
+	}
 
-    int elapsed = 10000;
-    while (true) {
-        usleep(100);
-        if (elapsed == 0) {
-            elapsed=10000;
-            device->debugDumpReq(0);
-        }
-        else {
-            elapsed--;
-        }
-        if ( getNumReadsInFlight() == 0 ) break;
-    }
+	int elapsed = 10000;
+	while (true) {
+		usleep(100);
+		if (elapsed == 0) {
+			elapsed=10000;
+			device->debugDumpReq(0);
+		}
+		else {
+			elapsed--;
+		}
+		if ( getNumReadsInFlight() == 0 ) break;
+	}
 }
 
 // Use all BUSES & CHIPS in the device
 // Can designate the range of blocks -> incl [blkStart, blkStart + blkCnt) non-incl
 // Can designate the range of pages  -> incl [pageStart, pageStart + pageCnt) non-incl
-//   Valid block # range: 0 ~ BLOCKS_PER_CHIP-1
-//   Valid page  # range: 0 ~ PAGES_PER_BLOCK-1
+//	 Valid block # range: 0 ~ BLOCKS_PER_CHIP-1
+//	 Valid page  # range: 0 ~ PAGES_PER_BLOCK-1
 void testWrite(FlashRequestProxy* device, int blkStart, int blkCnt, int pageStart, int pageCnt, bool genData=false) {
-    // blkEnd can be at most BLOCKS_PER_CHIP-1
-    int blkEnd = blkStart + blkCnt;
-    if (blkEnd > BLOCKS_PER_CHIP) blkEnd = BLOCKS_PER_CHIP;
+	// blkEnd can be at most BLOCKS_PER_CHIP-1
+	int blkEnd = blkStart + blkCnt;
+	if (blkEnd > BLOCKS_PER_CHIP) blkEnd = BLOCKS_PER_CHIP;
 
-    // pageEnd can be at most BLOCKS_PER_CHIP-1
-    int pageEnd = pageStart + pageCnt;
-    if (pageEnd > PAGES_PER_BLOCK) pageEnd = PAGES_PER_BLOCK;
-    
-    for (int page = pageStart; page < pageEnd; page++) {
-        for (int blk = blkStart; blk < blkEnd; blk++){
-            for (int chip = 0; chip < CHIPS_PER_BUS; chip++){
-                for (int bus = 0; bus < NUM_BUSES; bus++){
-                    int freeTag = waitIdleWriteBuffer();
-                    if (genData) {
-                        for (unsigned int w=0; w<FPAGE_SIZE/sizeof(unsigned int); w++) {
-                            writeBuffers[freeTag][w] = hashAddrToData(bus, chip, blk, w);
-                        }
-                    }
-                    writePage(bus, chip, blk, page, freeTag);
-                }
-            }
-        }
-    } 
+	// pageEnd can be at most BLOCKS_PER_CHIP-1
+	int pageEnd = pageStart + pageCnt;
+	if (pageEnd > PAGES_PER_BLOCK) pageEnd = PAGES_PER_BLOCK;
+	
+	for (int page = pageStart; page < pageEnd; page++) {
+		for (int blk = blkStart; blk < blkEnd; blk++){
+			for (int chip = 0; chip < CHIPS_PER_BUS; chip++){
+				for (int bus = 0; bus < NUM_BUSES; bus++){
+					int freeTag = waitIdleWriteBuffer();
+					if (genData) {
+						for (unsigned int w=0; w<FPAGE_SIZE/sizeof(unsigned int); w++) {
+							writeBuffers[freeTag][w] = hashAddrToData(bus, chip, blk, w);
+						}
+					}
+					writePage(bus, chip, blk, page, freeTag);
+				}
+			}
+		}
+	} 
 
-    int elapsed = 10000;
-    while (true) {
-        usleep(100);
-        if (elapsed == 0) {
-            elapsed=10000;
-            device->debugDumpReq(0);
-        }
-        else {
-            elapsed--;
-        }
-        if ( getNumWritesInFlight() == 0 ) break;
-    }
+	int elapsed = 10000;
+	while (true) {
+		usleep(100);
+		if (elapsed == 0) {
+			elapsed=10000;
+			device->debugDumpReq(0);
+		}
+		else {
+			elapsed--;
+		}
+		if ( getNumWritesInFlight() == 0 ) break;
+	}
 }
 
 
 int main(int argc, const char **argv)
 {
-    testPassed=true;
-    pthread_mutex_init(&flashReqMutex, NULL);
+	testPassed=true;
+	pthread_mutex_init(&flashReqMutex, NULL);
 
-    fprintf(stderr, "Initializing Connectal & DMA...\n");
+	fprintf(stderr, "Initializing Connectal & DMA...\n");
 
-    // Device initialization
-    device = new FlashRequestProxy(IfcNames_FlashRequestS2H);
-    FlashIndication deviceIndication(IfcNames_FlashIndicationH2S);
-    DmaManager *dma = platformInit();
-    
-    // Memory-allocation for DMA
-    srcAlloc = portalAlloc(srcAlloc_sz, 0);
-    dstAlloc = portalAlloc(dstAlloc_sz, 0);
-    srcBuffer = (unsigned int *)portalMmap(srcAlloc, srcAlloc_sz);
-    dstBuffer = (unsigned int *)portalMmap(dstAlloc, dstAlloc_sz);
+	// Device initialization
+	device = new FlashRequestProxy(IfcNames_FlashRequestS2H);
+	FlashIndication deviceIndication(IfcNames_FlashIndicationH2S);
+	DmaManager *dma = platformInit();
+	
+	// Memory-allocation for DMA
+	srcAlloc = portalAlloc(srcAlloc_sz, 0);
+	dstAlloc = portalAlloc(dstAlloc_sz, 0);
+	srcBuffer = (unsigned int *)portalMmap(srcAlloc, srcAlloc_sz);
+	dstBuffer = (unsigned int *)portalMmap(dstAlloc, dstAlloc_sz);
 
-    fprintf(stderr, "dstAlloc = %x\n", dstAlloc); 
-    fprintf(stderr, "srcAlloc = %x\n", srcAlloc); 
+	fprintf(stderr, "dstAlloc = %x\n", dstAlloc); 
+	fprintf(stderr, "srcAlloc = %x\n", srcAlloc); 
 
-    // Memory-mapping for DMA
-    portalCacheFlush(dstAlloc, dstBuffer, dstAlloc_sz, 1);
-    portalCacheFlush(srcAlloc, srcBuffer, srcAlloc_sz, 1);
-    ref_dstAlloc = dma->reference(dstAlloc);
-    ref_srcAlloc = dma->reference(srcAlloc);
+	// Memory-mapping for DMA
+	portalCacheFlush(dstAlloc, dstBuffer, dstAlloc_sz, 1);
+	portalCacheFlush(srcAlloc, srcBuffer, srcAlloc_sz, 1);
+	ref_dstAlloc = dma->reference(dstAlloc);
+	ref_srcAlloc = dma->reference(srcAlloc);
 
-    fprintf(stderr, "ref_dstAlloc = %x\n", ref_dstAlloc); 
-    fprintf(stderr, "ref_srcAlloc = %x\n", ref_srcAlloc); 
+	fprintf(stderr, "ref_dstAlloc = %x\n", ref_dstAlloc); 
+	fprintf(stderr, "ref_srcAlloc = %x\n", ref_srcAlloc); 
 
-    device->setDmaWriteRef(ref_dstAlloc);
-    device->setDmaReadRef(ref_srcAlloc);
+	device->setDmaWriteRef(ref_dstAlloc);
+	device->setDmaReadRef(ref_srcAlloc);
 
-    fprintf(stderr, "Done initializing Hardware & DMA!\n" ); 
+	fprintf(stderr, "Done initializing Hardware & DMA!\n" ); 
 
-    for (int t = 0; t < NUM_TAGS; t++) {
-        readTagTable[t].busy = false;
-        writeTagTable[t].busy = false;
+	for (int t = 0; t < NUM_TAGS; t++) {
+		readTagTable[t].busy = false;
+		writeTagTable[t].busy = false;
 
-        int byteOffset = t * FPAGE_SIZE;
-        readBuffers[t] = dstBuffer + byteOffset/sizeof(unsigned int);
-        writeBuffers[t] = srcBuffer + byteOffset/sizeof(unsigned int);
-    }
+		int byteOffset = t * FPAGE_SIZE;
+		readBuffers[t] = dstBuffer + byteOffset/sizeof(unsigned int);
+		writeBuffers[t] = srcBuffer + byteOffset/sizeof(unsigned int);
+	}
 
-    for (int blk=0; blk < BLOCKS_PER_CHIP; blk++) {
-        for (int c=0; c < CHIPS_PER_BUS; c++) {
-            for (int bus=0; bus< NUM_BUSES; bus++) {
-                flashStatus[bus][c][blk] = UNINIT;
-            }
-        }
-    }
+	for (int blk=0; blk < BLOCKS_PER_CHIP; blk++) {
+		for (int c=0; c < CHIPS_PER_BUS; c++) {
+			for (int bus=0; bus< NUM_BUSES; bus++) {
+				flashStatus[bus][c][blk] = UNINIT;
+			}
+		}
+	}
 
-    for (int t = 0; t < NUM_TAGS; t++) {
-        for ( unsigned int i = 0; i < FPAGE_SIZE/sizeof(unsigned int); i++ ) {
-            readBuffers[t][i] = 0xDEADBEEF;
-            writeBuffers[t][i] = 0xBEEFDEAD;
-        }
-    }
+	for (int t = 0; t < NUM_TAGS; t++) {
+		for ( unsigned int i = 0; i < FPAGE_SIZE/sizeof(unsigned int); i++ ) {
+			readBuffers[t][i] = 0xDEADBEEF;
+			writeBuffers[t][i] = 0xBEEFDEAD;
+		}
+	}
 
-    long actualFrequency=0;
-    long requestedFrequency=1e9/MainClockPeriod;
-    int status = setClockFrequency(0, requestedFrequency, &actualFrequency);
-    fprintf(stderr, "HW Operating Freq - Requested: %5.2f, Actual: %5.2f, status=%d\n"
-            ,(double)requestedFrequency*1.0e-6
-            ,(double)actualFrequency*1.0e-6,status);
+	long actualFrequency=0;
+	long requestedFrequency=1e9/MainClockPeriod;
+	int status = setClockFrequency(0, requestedFrequency, &actualFrequency);
+	fprintf(stderr, "HW Operating Freq - Requested: %5.2f, Actual: %5.2f, status=%d\n"
+			,(double)requestedFrequency*1.0e-6
+			,(double)actualFrequency*1.0e-6,status);
 
-    fprintf(stderr, "Done initializing Hardware & DMA!\n" ); 
-    fflush(stderr);
+	fprintf(stderr, "Done initializing Hardware & DMA!\n" ); 
+	fflush(stderr);
 
-    fprintf(stderr, "Test Start!\n" );
-    fflush(stderr);
+	fprintf(stderr, "Test Start!\n" );
+	fflush(stderr);
 
-    device->start(0);
-    device->setDebugVals(0,0); // flag, delay
+	device->start(0);
+	device->setDebugVals(0,0); // flag, delay
 
-    device->debugDumpReq(0);   // echo-back debug message
-    sleep(1);
+	device->debugDumpReq(0);   // echo-back debug message
+	sleep(1);
 
-    //int elapsed = 10000;
+	//int elapsed = 10000;
 
 #if defined(TEST_ERASE_ALL)
-    {
-        verbose_req = true;
-        verbose_resp = true;
+	{
+		verbose_req = true;
+		verbose_resp = true;
 
-        fprintf(stderr, "[TEST] ERASE ALL BLOCKS STARTED!\n");
-        testErase(device, 0, BLOCKS_PER_CHIP);
-        fprintf(stderr, "[TEST] ERASE ALL BLOCKS DONE!\n"); 
-    }
+		fprintf(stderr, "[TEST] ERASE ALL BLOCKS STARTED!\n");
+		testErase(device, 0, BLOCKS_PER_CHIP);
+		fprintf(stderr, "[TEST] ERASE ALL BLOCKS DONE!\n"); 
+	}
 #endif
 
 #if defined(MINI_TEST_SUITE)
-    {
-        // Functionality test
-        verbose_req = true;
-        verbose_resp = true;
-        int blkStart = 4086;
-        int blkCnt = 10;
-        int pageStart = 0;
-        int pageCnt = 10;
+	{
+		// Functionality test
+		verbose_req = true;
+		verbose_resp = true;
+		int blkStart = 4086;
+		int blkCnt = 10;
+		int pageStart = 0;
+		int pageCnt = 10;
 
-        fprintf(stderr, "[TEST] ERASE RANGED BLOCKS (Start: %d, Cnt: %d) STARTED!\n", blkStart, blkCnt); 
-        testErase(device, blkStart, blkCnt);
-        fprintf(stderr, "[TEST] ERASE RANGED BLOCKS DONE!\n" ); 
+		fprintf(stderr, "[TEST] ERASE RANGED BLOCKS (Start: %d, Cnt: %d) STARTED!\n", blkStart, blkCnt); 
+		testErase(device, blkStart, blkCnt);
+		fprintf(stderr, "[TEST] ERASE RANGED BLOCKS DONE!\n" ); 
 
-        fprintf(stderr, "[TEST] READ CHECK ON ERASED BLOCKS (Start: %d, Cnt: %d) STARTED!\n", blkStart, blkCnt); 
-        testRead(device, blkStart, blkCnt, pageStart, pageCnt, true /* checkRead */);
-        fprintf(stderr, "[TEST] READ CHECK ON ERASED BLOCKS DONE!\n" ); 
+		fprintf(stderr, "[TEST] READ CHECK ON ERASED BLOCKS (Start: %d, Cnt: %d) STARTED!\n", blkStart, blkCnt); 
+		testRead(device, blkStart, blkCnt, pageStart, pageCnt, true /* checkRead */);
+		fprintf(stderr, "[TEST] READ CHECK ON ERASED BLOCKS DONE!\n" ); 
 
-        fprintf(stderr, "[TEST] WRITE ON ERASED BLOCKS (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", blkStart, blkCnt, pageStart, pageCnt); 
-        testWrite(device, blkStart, blkCnt, pageStart, pageCnt, true /* genData */);
-        fprintf(stderr, "[TEST] WRITE ON ERASED BLOCKS DONE!\n" ); 
+		fprintf(stderr, "[TEST] WRITE ON ERASED BLOCKS (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", blkStart, blkCnt, pageStart, pageCnt); 
+		testWrite(device, blkStart, blkCnt, pageStart, pageCnt, true /* genData */);
+		fprintf(stderr, "[TEST] WRITE ON ERASED BLOCKS DONE!\n" ); 
 
-        fprintf(stderr, "[TEST] READ ON WRITTEN BLOCKS (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", blkStart, blkCnt, pageStart, pageCnt); 
-        testRead(device, blkStart, blkCnt, pageStart, pageCnt, true /* checkRead */);
-        fprintf(stderr, "[TEST] READ ON WRITTEN BLOCKS DONE!\n" ); 
-    }
+		fprintf(stderr, "[TEST] READ ON WRITTEN BLOCKS (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", blkStart, blkCnt, pageStart, pageCnt); 
+		testRead(device, blkStart, blkCnt, pageStart, pageCnt, true /* checkRead */);
+		fprintf(stderr, "[TEST] READ ON WRITTEN BLOCKS DONE!\n" ); 
+	}
 #endif
 
 #if defined(TEST_READ_SPEED)
-    {
-        // Read speed test: No printf / No data generation / No data integrity check
-        verbose_req = false;
-        verbose_resp = false;
+	{
+		// Read speed test: No printf / No data generation / No data integrity check
+		verbose_req = false;
+		verbose_resp = false;
 
-        int repeat = 4;
-        int blkStart = 0;
-        int blkCnt = 256;
-        int pageStart = 0;
-        int pageCnt = 32;
+		int repeat = 4;
+		int blkStart = 0;
+		int blkCnt = 256;
+		int pageStart = 0;
+		int pageCnt = 32;
 
-        timespec start, now;
-        clock_gettime(CLOCK_REALTIME, &start);
+		timespec start, now;
+		clock_gettime(CLOCK_REALTIME, &start);
 
-        fprintf(stderr, "[TEST] READ SPEED (Repeat: %d, BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", repeat, blkStart, blkCnt, pageStart, pageCnt); 
-        testRead(device, blkStart, blkCnt, pageStart, pageCnt, false /* checkRead */, repeat);
+		fprintf(stderr, "[TEST] READ SPEED (Repeat: %d, BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", repeat, blkStart, blkCnt, pageStart, pageCnt); 
+		testRead(device, blkStart, blkCnt, pageStart, pageCnt, false /* checkRead */, repeat);
 
-        fprintf(stderr, "[TEST] READ SPEED DONE!\n" ); 
+		fprintf(stderr, "[TEST] READ SPEED DONE!\n" ); 
 
-        clock_gettime(CLOCK_REALTIME, & now);
-        fprintf(stderr, "SPEED: %f MB/s\n", (repeat*8192.0*NUM_BUSES*CHIPS_PER_BUS*blkCnt*pageCnt/1000000)/timespec_diff_sec(start,now));
-    }
+		clock_gettime(CLOCK_REALTIME, & now);
+		fprintf(stderr, "SPEED: %f MB/s\n", (repeat*8192.0*NUM_BUSES*CHIPS_PER_BUS*blkCnt*pageCnt/1000000)/timespec_diff_sec(start,now));
+	}
 #endif
 
 #if 0
 #endif
 
-    if (testPassed==true) {
-        fprintf(stderr, "LOG: TEST PASSED!\n");
-    }
-    else {
-        fprintf(stderr, "LOG: **ERROR: TEST FAILED!\n");
-    }
+	if (testPassed==true) {
+		fprintf(stderr, "LOG: TEST PASSED!\n");
+	}
+	else {
+		fprintf(stderr, "LOG: **ERROR: TEST FAILED!\n");
+	}
 }
