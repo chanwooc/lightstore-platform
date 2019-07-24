@@ -4,6 +4,8 @@
 *.swm
 *.o
 
+*.bo
+
 vivado*.jou
 vivado*.log
 webtalk*.jou
