@@ -1,19 +1,19 @@
 import BRAM::*;
 import KeytableMerger::*;
 
-Integer highLvlKT = 52;
-Integer lowLvlKT = 52;
+Integer highLvlKT = 41; //52
+Integer lowLvlKT = 88; //52
 
 module mkTest(Empty);
 	BRAM_Configure lowLvlBufCfg = defaultValue;
 	lowLvlBufCfg.memorySize = lowLvlKT*512; // 1 page = 8192 KB = 512 * 16B
-	lowLvlBufCfg.loadFormat = tagged Hex "bram/overlap/l_level.bram";
+	lowLvlBufCfg.loadFormat = tagged Hex "bram/addr/l_level.bram";
 
 	BRAM1Port#(Bit#(32), Bit#(128)) lowLvlBram <- mkBRAM1Server(lowLvlBufCfg);
 
 	BRAM_Configure highLvlBufCfg = defaultValue;
 	highLvlBufCfg.memorySize = highLvlKT*512; // 1 page = 8192 KB = 512 * 16B
-	highLvlBufCfg.loadFormat = tagged Hex "bram/overlap/h_level.bram";
+	highLvlBufCfg.loadFormat = tagged Hex "bram/addr/h_level.bram";
 
 	BRAM1Port#(Bit#(32), Bit#(128)) highLvlBram <- mkBRAM1Server(highLvlBufCfg);
 
@@ -67,5 +67,10 @@ module mkTest(Empty);
 		Bit#(9) beatTruncate = truncate(mergerOutputCnt);
 		if (f==1 && beatTruncate == 511 )
 			$finish;
+	endrule
+
+	rule printCollectedAddr;
+		let addr <- merger.getCollectedAddr();
+		//$display("%x", addr);
 	endrule
 endmodule

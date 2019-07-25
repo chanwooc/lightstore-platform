@@ -30,6 +30,7 @@ typedef TDiv#(KeytableBytes, WordBytes) KeytableWords; // = 512
 typedef TDiv#(KtHeaderBytes, WordBytes) KtHeaderWords; // = 64
 typedef TDiv#(KtHeaderBytes, HeaderElemBytes) KtHeaderElems; // = 512
 
+Integer keytableBytes = valueOf(KeytableBytes); // = 8192
 Integer keytableWords = valueOf(KeytableWords); // = 512
 Integer ktHeaderWords = valueOf(KtHeaderWords); // = 64
 Integer ktHeaderElems = valueOf(KtHeaderElems); // = 512
@@ -68,20 +69,29 @@ typedef enum {
 } MergerStatus deriving (Bits, Eq);
 
 interface MergeKeytable;
-	method Action runMerge(Bit#(16) numHighLvlKt, Bit#(16) numLowLvlKt);
+	method Action runMerge(Bit#(32) numHighLvlKt, Bit#(32) numLowLvlKt);
 
 	method Action enqHighLevelKt(Bit#(WordSz) beat);
 	method Action enqLowLevelKt(Bit#(WordSz) beat);
 
 	// method MergerStatus mergerStatus();
 	method ActionValue#(Tuple2#(Bool,Bit#(WordSz))) getMergedKt();
+	method ActionValue#(Bit#(32)) getCollectedAddr();
 endinterface
 
 (* synthesize *)
 module mkMergeKeytable (MergeKeytable ifc);
+
+	Reg#(Bit#(32)) cnt <- mkReg(0);
+
+	rule cntUP;
+		cnt <= cnt+1;
+	endrule
+
 	// [0]: High Level (N)
 	// [1]: Low Level (N+1)
-	Vector#(2, Reg#(Bit#(16))) numKeytable <- replicateM(mkReg(0));
+	Vector#(2, Reg#(Bit#(32))) numKeytable <- replicateM(mkReg(0));
+	Vector#(2, Reg#(Bit#(32))) numKeytableOrig <- replicateM(mkReg(0));
 	Vector#(2, Reg#(Bit#(16))) keytableInBeat <- replicateM(mkReg(0));
 	Vector#(2, FIFOF#(Bit#(WordSz))) keytableIn <- replicateM(mkFIFOF);
 
@@ -93,6 +103,8 @@ module mkMergeKeytable (MergeKeytable ifc);
 	FIFOF#(Maybe#(Bit#(5))) mergedSizeInfo <- mkFIFOF;
 
 	FIFOF#(Tuple2#(Bool, Bit#(WordSz))) createdKtStream <- mkFIFOF;
+
+	FIFOF#(Bit#(32)) collectedAddrQ <- mkFIFOF;
 
 	// Pre-processing header
 	for(Integer i=0; i<2; i=i+1) begin
@@ -115,6 +127,7 @@ module mkMergeKeytable (MergeKeytable ifc);
 				keytableInBeat[i] <= keytableInBeat[i] + 1;
 
 				if(keytableInBeat[i] == 0) begin
+					//$display("[%d] Port%d, KT %d-th start ", cnt, i, numKeytableOrig[i]-numKeytable[i]+1);
 					//first beat
 					hdrParserIsLast.enq(numKeytable[i]==1?True:False);
 					numEnt <= headerEntries[0];
@@ -139,6 +152,7 @@ module mkMergeKeytable (MergeKeytable ifc);
 				else begin
 					keytableInBeat[i] <= 0;
 					numKeytable[i] <= numKeytable[i] - 1;
+					//$display("[%d] Port%d, KT %d-th ended ", cnt, i, numKeytableOrig[i]-numKeytable[i]+1);
 				end
 			end
 		endrule
@@ -400,12 +414,21 @@ module mkMergeKeytable (MergeKeytable ifc);
 
 				if ( !l_moreBeat ) begin // EQUAL
 					// remove low level entry @ [1]
-					// Collect LPA for GC here
+					// Collect addresses for GC here
 					if(!isValid(l_entryBuf[decPhaseCnt])) begin
 						l_ktEntryStream.deq;
 					end
 					l_ktBeatCntStream.deq;
 					writeVReg(l_entryBuf, replicate(tagged Invalid));
+
+					if(collectedAddrQ.notFull) begin // if full, just drop (OKAY to drop i guess...)
+						if(isValid(l_entryBuf[0])) begin
+							collectedAddrQ.enq(truncate(fromMaybe(?, l_entryBuf[0])));
+						end
+						else begin
+							collectedAddrQ.enq(truncate(l_ktEntryStream.first));
+						end
+					end
 				end
 				else begin
 				end
@@ -523,6 +546,8 @@ module mkMergeKeytable (MergeKeytable ifc);
 	Reg#(Bit#(16)) outKtBeatCnt <- mkReg(0);
 	rule newKT;
 		if (outKtBeatCnt < fromInteger(ktHeaderWords)) begin // 64
+			//if (outKtBeatCnt == 0) $display("[%d] table out start", cnt);
+
 			if (outKtBeatCnt < tpl_2(newKtTrig.first)) begin
 				newHeaderBuf.deq;
 				let newHdr = newHeaderBuf.first;
@@ -549,6 +574,7 @@ module mkMergeKeytable (MergeKeytable ifc);
 				outKtBeatCnt <= 0;
 				// One page out..
 				newKtTrig.deq;
+				//$display("[%d] table out complete", cnt);
 			end
 			else begin
 				outKtBeatCnt <= outKtBeatCnt + 1;
@@ -556,9 +582,11 @@ module mkMergeKeytable (MergeKeytable ifc);
 		end
 	endrule
 
-	method Action runMerge(Bit#(16) numHighLvlKt, Bit#(16) numLowLvlKt) if (numKeytable[0] == 0 && numKeytable[1] == 0);
+	method Action runMerge(Bit#(32) numHighLvlKt, Bit#(32) numLowLvlKt) if (numKeytable[0] == 0 && numKeytable[1] == 0);
 		numKeytable[0] <= numHighLvlKt;
 		numKeytable[1] <= numLowLvlKt;
+		numKeytableOrig[0] <= numHighLvlKt;
+		numKeytableOrig[1] <= numLowLvlKt;
 		keytableInBeat[0] <= 0;
 		keytableInBeat[1] <= 0;
 	endmethod
@@ -576,5 +604,9 @@ module mkMergeKeytable (MergeKeytable ifc);
 	method ActionValue#(Tuple2#(Bool,Bit#(WordSz))) getMergedKt();
 		createdKtStream.deq;
 		return createdKtStream.first;
+	endmethod
+	method ActionValue#(Bit#(32)) getCollectedAddr();
+		collectedAddrQ.deq;
+		return collectedAddrQ.first;
 	endmethod
 endmodule
