@@ -35,8 +35,6 @@ module mkTest(Empty);
 	rule l_generateReq (lowGenAddrReg < fromInteger(512*lowLvlKT));
 		lowGenAddrReg <= lowGenAddrReg + 1;
 		lowLvlBram.portA.request.put( BRAMRequest{ write: False, responseOnWrite: False, address: (lowGenAddrReg), datain: ?} );
-
-		//$display("l pushed %d", lowGenAddrReg);
 	endrule
 
 	Reg#(Bit#(32)) highGenAddrReg <- mkReg(0);
@@ -44,7 +42,6 @@ module mkTest(Empty);
 	rule h_generateReq (highGenAddrReg < fromInteger(512*highLvlKT));
 		highGenAddrReg <= highGenAddrReg + 1;
 		highLvlBram.portA.request.put( BRAMRequest{ write: False, responseOnWrite: False, address: (highGenAddrReg), datain: ?} );
-		//$display("h pushed %d", highGenAddrReg);
 	endrule
 
 	rule h_push;
@@ -65,7 +62,6 @@ module mkTest(Empty);
 		let d = tpl_2(data);
 		Bit#(1) f = pack(tpl_1(data));
 
-		//$display("%d Word %d: %x %x %x %x %x %x %x %x", f, mergerOutputCnt, d[127:112], d[111:96], d[95:80], d[79:64], d[63:48], d[47:32], d[31:16], d[15:0]);
 		$display("%x%x%x%x%x%x%x%x",d[127:112], d[111:96], d[95:80], d[79:64], d[63:48], d[47:32], d[31:16], d[15:0]);
 
 		Bit#(9) beatTruncate = truncate(mergerOutputCnt);

@@ -118,25 +118,15 @@ module mkMergeKeytable (MergeKeytable ifc);
 					//first beat
 					hdrParserIsLast.enq(numKeytable[i]==1?True:False);
 					numEnt <= headerEntries[0];
-					//if(i==1) begin
-					//	$display("splitheader0: numEnt %d", headerEntries[0]);
-					//end
 
 					let idxOffset = headerEntries[0]+1;
 					if(idxOffset < 8) begin
 						lastEntOffset <= headerEntries[idxOffset[2:0]];
-						//if(i==1) begin
-						//	$display("splitheader0: lastOffset %d", headerEntries[idxOffset[2:0]]);
-						//end
-
 					end
 				end
 				else if (keytableInBeat[i]==((numEnt+1)>>3)) begin
 					let idxOffset = numEnt + 1;
 					lastEntOffset <= headerEntries[idxOffset[2:0]];
-					//if(i==1) begin
-					//	$display("splitheader0: lastOffset %d", headerEntries[idxOffset[2:0]]);
-					//end
 				end
 			end
 			else if (keytableInBeat[i] < fromInteger(keytableWords)) begin // Keytable body
@@ -168,9 +158,6 @@ module mkMergeKeytable (MergeKeytable ifc);
 				hdrParserBuf[1].deq;
 
 				scannedHdrElems <= 2; // 2 header elements processed
-				//if(i==1) begin
-				//	$display("parseHeader0: first beat numEnt %d", entries);
-				//end
 			end
 			else if (scannedHdrElems < numKtEntries + 2) begin // k keytable entries => (k+2)-header elements
 				let nextOffset <- toGet(hdrParserBuf[scannedHdrElems[2:0]]).get;
@@ -181,18 +168,12 @@ module mkMergeKeytable (MergeKeytable ifc);
 				if (entryBeats==0) entryBeats = 1;  // Min beats = 1
 
 				ktBeatCntStream[i].enq( tagged Valid entryBeats );  // offset difference / 16 -> Beat
-				//if(i==1) begin
-				//	$display("parseHeader0: scanned header elems %d", scannedHdrElems);
-				//end
 
 				if (scannedHdrElems == fromInteger(ktHeaderElems)-1) scannedHdrElems <= 0;
 				else scannedHdrElems <= scannedHdrElems+1;
 			end
 			else if (scannedHdrElems < fromInteger(ktHeaderElems)) begin
 				if (scannedHdrElems == numKtEntries+2) begin
-					//if(i==1) begin
-					//	$display("parseHeader0: scanned header DONE elems %d", scannedHdrElems);
-					//end
 					hdrParserIsLast.deq;
 					if (hdrParserIsLast.first) begin
 						// last keytable -> signal flush
@@ -334,8 +315,6 @@ module mkMergeKeytable (MergeKeytable ifc);
 				curMStatus <= LOW_FLUSH;
 				l_entryBeatSent <= 1;
 			end
-
-			//$display("Low level entry is smaller sz %d", curEntSzInBeats);
 		end
 		else if (res == LT) begin // FLUSH High level entry
 			if(isValid(h_entryBuf[0])) begin
@@ -356,7 +335,6 @@ module mkMergeKeytable (MergeKeytable ifc);
 				curMStatus <= HIGH_FLUSH;
 				h_entryBeatSent <= 1;
 			end
-			//$display("High level entry is smaller sz %d", curEntSzInBeats);
 		end
 		else if (res == EQ) begin // EQ
 			let h_curEntSzInBeats = fromMaybe(?, h_ktBeatCntStream.first);
@@ -367,7 +345,6 @@ module mkMergeKeytable (MergeKeytable ifc);
 
 			if ( h_moreBeat && l_moreBeat ) begin // check next word
 				decPhaseCnt <= decPhaseCnt + 1;
-				//$display("Same Entry @ decPhase %d", decPhaseCnt);
 
 				if(!isValid(h_entryBuf[decPhaseCnt])) begin
 					h_ktEntryStream.deq;
@@ -399,7 +376,6 @@ module mkMergeKeytable (MergeKeytable ifc);
 					curMStatus <= LOW_FLUSH;
 					l_entryBeatSent <= 1;
 				end
-				//$display("Same but Low level entry is shorter sz %d, phase %d", l_curEntSzInBeats, decPhaseCnt);
 			end
 			else if (!h_moreBeat) begin // high level is smaller or Equal
 				decPhaseCnt <= 0;
@@ -432,7 +408,6 @@ module mkMergeKeytable (MergeKeytable ifc);
 					writeVReg(l_entryBuf, replicate(tagged Invalid));
 				end
 				else begin
-					//$display("Same but High level entry is shorter sz %d, phase %d", h_curEntSzInBeats, decPhaseCnt);
 				end
 			end
 		end
@@ -457,7 +432,6 @@ module mkMergeKeytable (MergeKeytable ifc);
 			curMStatus <= DECISION;
 			h_ktBeatCntStream.deq;
 			mergedSizeInfo.enq(tagged Valid curEntSzInBeats);
-			//$display("HighFlush Done");
 		end
 	endrule
 
@@ -480,7 +454,6 @@ module mkMergeKeytable (MergeKeytable ifc);
 			curMStatus <= DECISION;
 			l_ktBeatCntStream.deq;
 			mergedSizeInfo.enq(tagged Valid curEntSzInBeats);
-			//$display("LowFlush Done");
 		end
 	endrule
 
@@ -505,10 +478,8 @@ module mkMergeKeytable (MergeKeytable ifc);
 			ktOffset <= 1024 + sizeInByte;
 			newHdrCnt <= newHdrCnt + 3;
 			mergedSizeInfo.deq;
-			//$display("new header start!");
 		end
 		else if (isValid(mergedSizeInfo.first) && ktOffset+sizeInByte <= 8192) begin
-			//$display("new header processing %d!", newHdrCnt);
 
 			newHeaderEntries[ newHdrCnt[2:0] ] <= ktOffset + sizeInByte;
 			ktOffset <= ktOffset + sizeInByte;
@@ -537,13 +508,11 @@ module mkMergeKeytable (MergeKeytable ifc);
 			if (isValid(mergedSizeInfo.first)) begin
 				//(isLastKT, # of header beats pushed, lastKTEntry Offset, numEntries)
 				newKtTrig.enq(tuple4(False, ((newHdrCnt-1)>>3) +1 , ktOffset, newHdrCnt-2));
-				//$display("trig no-last page, newHdrCnt %d, ktOffset %d", newHdrCnt, ktOffset);
 			end
 			else begin
 				mergedSizeInfo.deq;
 				//(isLastKT, # of header beats pushed, lastKTEntry Offset, numEntries)
 				newKtTrig.enq(tuple4(True, ((newHdrCnt-1)>>3) +1 , ktOffset, newHdrCnt-2));
-				//$display("trig last page, newHdrCnt %d, ktOffset %d", newHdrCnt, ktOffset);
 			end
 		end
 	endrule
