@@ -1,25 +1,3 @@
-// Copyright (c) 2013 Quanta Research Cambridge, Inc.
-
-// Permission is hereby granted, free of charge, to any person
-// obtaining a copy of this software and associated documentation
-// files (the "Software"), to deal in the Software without
-// restriction, including without limitation the rights to use, copy,
-// modify, merge, publish, distribute, sublicense, and/or sell copies
-// of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-
-// The above copyright notice and this permission notice shall be
-// included in all copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
-// BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
-// ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-
 import FIFOF::*;
 import FIFO::*;
 import FIFOLevel::*;
@@ -53,6 +31,9 @@ import ControllerTypes::*;
 import FlashCtrlZcu::*;
 import FlashCtrlModel::*;
 
+import KtMergerManager::*;
+`include "ConnectalProjectConfig.bsv"
+
 import Top_Pins::*;
 
 //import MainTypes::*;
@@ -66,12 +47,18 @@ interface FlashRequest;
 	method Action setDmaReadRef(Bit#(32) sgId);
 	method Action setDmaWriteRef(Bit#(32) sgId);
 
+	//method Action doDmaTest(Bit#(32) dummy);
+	//method Action setDmaWriteRef2(Bit#(32) sgId);
+	method Action setDmaKtPPARef(Bit#(32) sgIdHigh); // TODO: test
+	method Action startPpa(Bit#(32) cnt_high);
+
 	method Action start(Bit#(32) dummy);
 	method Action debugDumpReq(Bit#(32) dummy);
 	method Action setDebugVals (Bit#(32) flag, Bit#(32) debugDelay); 
 endinterface
 
 interface FlashIndication;
+	method Action highPpaEcho(Bit#(32) ppa); // TODO: test..
 	method Action readDone(Bit#(32) tag);
 	method Action writeDone(Bit#(32) tag);
 	method Action eraseDone(Bit#(32) tag, Bit#(32) status);
@@ -79,6 +66,8 @@ interface FlashIndication;
 endinterface
 
 typedef 128 DmaBurstBytes; 
+typedef TLog#(DmaBurstBytes) DmaBurstBytesLog;
+Integer dmaBurstBytesLog = valueOf(DmaBurstBytesLog);
 Integer pageSize8192 = 8192;
 
 // following numbers are skewed due to page size of 8224 from FLASH***
@@ -130,28 +119,30 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//--------------------------------------------
 	// DMA Module Instantiation
 	//--------------------------------------------
-	Vector#(NumReadClients, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TDiv#(NUM_ENG_PORTS,NumReadClients))) re <- replicateM(mkMemReadEngine);
-	Vector#(NumWriteClients, MemWriteEngine#(DataBusWidth, DataBusWidth,  1, TDiv#(NUM_ENG_PORTS,NumWriteClients))) we <- replicateM(mkMemWriteEngine);
+	Vector#(NumReadClients, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TDiv#(NUM_ENG_PORTS, `NumReFlash))) re <- replicateM(mkMemReadEngine);
+	Vector#(NumWriteClients, MemWriteEngine#(DataBusWidth, DataBusWidth,  1, TDiv#(NUM_ENG_PORTS,`NumWeFlash))) we <- replicateM(mkMemWriteEngine);
 
-	function MemReadEngineServer#(DataBusWidth) getREServer( Vector#(NumReadClients, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TDiv#(NUM_ENG_PORTS,NumReadClients))) rengine, Integer idx ) ;
+	function MemReadEngineServer#(DataBusWidth) getREServer( Vector#(NumReadClients, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TDiv#(NUM_ENG_PORTS, `NumReFlash))) rengine, Integer idx ) ;
 		//let numEngineServer = valueOf(TDiv#(NUM_ENG_PORTS,NumReadClients));
 		//let idxEngine = idx / numEngineServer;
 		//let idxServer = idx % numEngineServer;
 
-		let idxEngine = idx % valueOf(NumReadClients);
-		let idxServer = idx / valueOf(NumReadClients);
+		//let idxEngine = idx % valueOf(NumReadClients);
+		//let idxServer = idx / valueOf(NumReadClients);
+		let idxEngine = idx % (`NumReFlash);
+		let idxServer = idx / (`NumReFlash);
 
 		return rengine[idxEngine].readServers[idxServer];
 		//return rengine[idx].readServers[0];
 	endfunction
 	
-	function MemWriteEngineServer#(DataBusWidth) getWEServer( Vector#(NumWriteClients, MemWriteEngine#(DataBusWidth, DataBusWidth,  1, TDiv#(NUM_ENG_PORTS,NumWriteClients))) wengine, Integer idx ) ;
+	function MemWriteEngineServer#(DataBusWidth) getWEServer( Vector#(NumWriteClients, MemWriteEngine#(DataBusWidth, DataBusWidth,  1, TDiv#(NUM_ENG_PORTS,`NumWeFlash))) wengine, Integer idx ) ;
 		//let numEngineServer = valueOf(TDiv#(NUM_ENG_PORTS,NumWriteClients));
 		//let idxEngine = idx / numEngineServer;
 		//let idxServer = idx % numEngineServer;
 
-		let idxEngine = idx % valueOf(NumWriteClients);
-		let idxServer = idx / valueOf(NumWriteClients);
+		let idxEngine = idx % (`NumWeFlash);
+		let idxServer = idx / (`NumWeFlash);
 
 		return wengine[idxEngine].writeServers[idxServer];
 		//return wengine[idx].writeServers[0];
@@ -181,6 +172,55 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Reg#(Bit#(32)) debugReadCnt <- mkReg(0);
 	Reg#(Bit#(32)) debugWriteCnt <- mkReg(0);
 
+
+//	//--------------------------------------------
+//	// TODO: Test (DMA Write) - Side Band
+//	//--------------------------------------------
+//	Reg#(Bit#(32)) dmaWriteSgid2 <- mkReg(0);
+//	FIFO#(Bool) dmaTestCmdQ <- mkFIFO;
+//	FIFO#(Bool) dmaTestReq2RespQ <- mkFIFO;
+//
+//	rule driveTestDMAReq;
+//		dmaTestCmdQ.deq;
+//
+//		let dmaCmd = MemengineCmd {
+//							sglId: dmaWriteSgid2, 
+//							base: 0,
+//							len:fromInteger(dmaLength), 
+//							burstLen:fromInteger(dmaBurstBytes)
+//						};
+//
+//		we[4].writeServers[0].request.put(dmaCmd);
+//
+//		dmaTestReq2RespQ.enq(True);
+//	endrule
+//
+//	Reg#(Bit#(32)) beatCnt <- mkReg(0);
+//	rule driveTestDMAData;
+//		let a = dmaTestReq2RespQ.first;
+//		if (a == True && beatCnt < 512) beatCnt <= beatCnt+1;
+//		else begin
+//			beatCnt <= 0;
+//			dmaTestReq2RespQ.deq;
+//		end
+//		
+//		we[4].writeServers[0].data.enq('hDEADBEEFABCDEFEF);
+//	endrule
+//
+//	rule driveTestDMADone;
+//		let d <- we[4].writeServers[0].done.get;
+//		indication.dmaTestDone(11);
+//	endrule
+
+	//--------------------------------------------
+	// TODO: PPA request test
+	//--------------------------------------------
+	KtMergerManager merger <- mkKtMergerManager(re[2].readServers, we[4].writeServers);
+
+	rule indPPA;
+		let d <- merger.getPPA;
+		indication.highPpaEcho(d);
+	endrule
 
 	//--------------------------------------------
 	// Reads from Flash (DMA Write)
@@ -529,6 +569,20 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		method Action setDmaWriteRef(Bit#(32) sgId);
 			dmaWriteSgid <= sgId;
 		endmethod
+
+//		method Action doDmaTest(Bit#(32) dummy);
+//			dmaTestCmdQ.enq(True);
+//		endmethod
+//		method Action setDmaWriteRef2(Bit#(32) sgId);
+//			dmaWriteSgid2 <= sgId;
+//		endmethod
+		method Action setDmaKtPPARef(Bit#(32) sgIdHigh);
+			merger.setDmaKtPPARef(sgIdHigh, 0, 0);
+		endmethod
+		method Action startPpa(Bit#(32) cnt_high);
+			merger.runMerge(cnt_high, 11);
+		endmethod
+
 
 		method Action start(Bit#(32) dummy);
 			started <= True;

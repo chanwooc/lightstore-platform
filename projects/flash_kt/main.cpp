@@ -84,6 +84,9 @@ int curReadsInFlight = 0;
 int curWritesInFlight = 0;
 int curErasesInFlight = 0;
 
+int testAckCount = 0; // TODO: test 
+int getTestAckCount() { return testAckCount; }
+
 double timespec_diff_sec( timespec start, timespec end ) {
 	double t = end.tv_sec - start.tv_sec;
 	t += ((double)(end.tv_nsec - start.tv_nsec)/1000000000L);
@@ -137,6 +140,17 @@ bool checkReadData(int tag) {
 class FlashIndication: public FlashIndicationWrapper {
 	public:
 		FlashIndication(unsigned int id) : FlashIndicationWrapper(id){}
+
+//		virtual void dmaTestDone(unsigned int tag) {
+//			fprintf(stderr, "DMA SideBand Test Done\n" );
+//		}
+		virtual void highPpaEcho(unsigned int ppa) {
+			fprintf(stderr, "ppa: %u\n", ppa);
+			fflush(stderr);
+			pthread_mutex_lock(&flashReqMutex);
+			testAckCount = testAckCount+1;
+			pthread_mutex_unlock(&flashReqMutex);
+		}
 
 		virtual void readDone(unsigned int tag) {
 
@@ -193,7 +207,7 @@ class FlashIndication: public FlashIndicationWrapper {
 
 		virtual void eraseDone(unsigned int tag, unsigned int status) {
 			if ( verbose_resp ) {
-				fprintf(stderr, "LOG: eraseDone, tag=%d, status=%d\n", tag, status); fflush(stdout);
+				fprintf(stderr, "LOG: eraseDone, tag=%d, status=%d\n", tag, status); fflush(stderr);
 			}
 
 			if (status != 0) {
@@ -548,7 +562,7 @@ int main(int argc, const char **argv)
 		verbose_req = false;
 		verbose_resp = false;
 
-		int repeat = 4;
+		int repeat = 1;
 		int blkStart = 0;
 		int blkCnt = 256;
 		int pageStart = 0;
@@ -576,4 +590,43 @@ int main(int argc, const char **argv)
 	else {
 		fprintf(stderr, "LOG: **ERROR: TEST FAILED!\n");
 	}
+
+
+	fprintf(stderr, "PPA Test\n");
+	int highPpaAlloc = portalAlloc(4*1024*200, 0);
+	unsigned int* highPpaBuf = (unsigned int*)portalMmap(highPpaAlloc, 4*1024*200);
+
+	fprintf(stderr, "highPpaAlloc = %x\n", highPpaAlloc); 
+	portalCacheFlush(highPpaAlloc, highPpaBuf, 4*1024*200, 1);
+	unsigned int ref_highPpaAlloc = dma->reference(highPpaAlloc);
+	device->setDmaKtPPARef(ref_highPpaAlloc);
+
+	unsigned int numTable=5217;
+	for (unsigned int t=0; t < numTable; t++) {
+		highPpaBuf[t] = t;
+	}
+	fprintf(stderr, "Start PPA: %u\n", numTable); 
+	device->startPpa(numTable);
+
+	int elapsed = 10000;
+	while (true) {
+		usleep(100);
+		if (elapsed == 0) {
+			elapsed=10000;
+			device->debugDumpReq(0);
+		}
+		else {
+			elapsed--;
+		}
+		if ( getTestAckCount() == (int)numTable ) break;
+	}
+
+	dma->dereference(ref_highPpaAlloc);
+	portalMunmap(highPpaBuf, 4*1024*200);
+
+	dma->dereference(ref_srcAlloc);
+	dma->dereference(ref_dstAlloc);
+	portalMunmap(srcBuffer, srcAlloc_sz);
+	portalMunmap(dstBuffer, dstAlloc_sz);
+	fprintf(stderr, "Done releasing DMA!\n");
 }
