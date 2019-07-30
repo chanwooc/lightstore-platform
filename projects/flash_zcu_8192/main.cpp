@@ -576,4 +576,10 @@ int main(int argc, const char **argv)
 	else {
 		fprintf(stderr, "LOG: **ERROR: TEST FAILED!\n");
 	}
+
+	dma->dereference(ref_srcAlloc);
+	dma->dereference(ref_dstAlloc);
+	portalMunmap(srcBuffer, srcAlloc_sz);
+	portalMunmap(dstBuffer, dstAlloc_sz);
+	fprintf(stderr, "Done releasing DMA!\n");
 }
