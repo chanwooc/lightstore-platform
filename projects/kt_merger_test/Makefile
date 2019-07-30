@@ -13,7 +13,7 @@ PIN_TYPE=Empty
 NUMBER_OF_MASTERS=2
 PLATFORM_NUMBER_OF_MASTERS=2
 NUMBER_OF_RENGINES=2 # Flash Write (DMA Read)
-NUMBER_OF_WENGINES=2 # Flash Read  (DMA Write)
+NUMBER_OF_WENGINES=4 # Flash Read  (DMA Write)
 
 # Connectal Main Clock: 200 MHz
 # Derived clock for Aurora Init Clock (110 MHz, T=9.090)

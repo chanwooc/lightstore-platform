@@ -35,8 +35,8 @@ class KtIndication: public KtIndicationWrapper {
 	public:
 		KtIndication(unsigned int id) : KtIndicationWrapper(id){}
 
-		virtual void mergeDone(unsigned int numMergedKt) {
-			fprintf(stderr, "mergeDone: %u\n", numMergedKt);
+		virtual void mergeDone(unsigned int numMergedKt, uint64_t counter) {
+			fprintf(stderr, "mergeDone: %u %" PRIu64 "\n", numMergedKt, counter);
 			num_merged = (int)numMergedKt;
 			fflush(stderr);
 			sem_post(&sem);
