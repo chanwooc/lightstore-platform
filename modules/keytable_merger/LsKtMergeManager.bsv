@@ -72,12 +72,12 @@ module mkLsKtMergeManager #(
 		addrManager.setDmaKtPPARef(sgIdHigh, sgIdLow, sgIdRes);
 	endmethod
 
-//	method ActionValue#(Bit#(32)) getPPAHigh();
-//		let d <- addrManager.getPPAHigh;
-//		return d;
-//	endmethod
-//	method ActionValue#(Bit#(32)) getPPALow();
-//		let d <- addrManager.getPPALow;
-//		return d;
-//	endmethod
+	method ActionValue#(Bit#(32)) getPPAHigh();
+		let d <- addrManager.getPPAHigh;
+		return d;
+	endmethod
+	method ActionValue#(Bit#(32)) getPPALow();
+		let d <- addrManager.getPPALow;
+		return d;
+	endmethod
 endmodule
