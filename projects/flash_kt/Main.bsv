@@ -31,7 +31,7 @@ import ControllerTypes::*;
 import FlashCtrlZcu::*;
 import FlashCtrlModel::*;
 
-import KtAddrManager::*;
+import LsKtMergeManager::*; // LightStore Keytable Compaction Manager
 `include "ConnectalProjectConfig.bsv"
 
 import Top_Pins::*;
@@ -216,17 +216,19 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//--------------------------------------------
 	// TODO: PPA request test
 	//--------------------------------------------
-	KtAddrManager ktAddrMgr <- mkKtAddrManager(re[2].readServers); //, we[4].writeServers);
+	LsKtMergeManager ktMergeManager <- mkLsKtMergeManager(re[2].readServers, we[4].writeServers);
 
+	// TODO: Tests to be removed
 	rule indPPAHigh;
-		let d <- ktAddrMgr.getPPAHigh;
+		let d <- ktMergeManager.getPPAHigh;
 		indication.ppaEchoHigh(d);
 	endrule
-
 	rule indPPALow;
-		let d <- ktAddrMgr.getPPALow;
+		let d <- ktMergeManager.getPPALow;
 		indication.ppaEchoLow(d);
 	endrule
+
+
 
 	//--------------------------------------------
 	// Reads from Flash (DMA Write)
@@ -583,10 +585,10 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 //			dmaWriteSgid2 <= sgId;
 //		endmethod
 		method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow);
-			ktAddrMgr.setDmaKtPPARef(sgIdHigh, sgIdLow, 0);
+			ktMergeManager.setDmaKtPPARef(sgIdHigh, sgIdLow, 0);
 		endmethod
 		method Action startPpa(Bit#(32) cntHigh, Bit#(32) cntLow);
-			ktAddrMgr.startGetPPA(cntHigh, cntLow);
+			ktMergeManager.startGetPPA(cntHigh, cntLow);
 		endmethod
 
 		method Action start(Bit#(32) dummy);

@@ -1,3 +1,4 @@
+import DefaultValue::*;
 import FIFOF::*;
 import FIFO::*;
 import FIFOLevel::*;
@@ -8,6 +9,7 @@ import ClientServer::*;
 import Connectable::*;
 
 import Vector::*;
+import BuildVector::*;
 import List::*;
 
 import ConnectalMemory::*;
@@ -29,35 +31,20 @@ import KeytableMerger::*;
 
 interface KtAddrManager;
 	method Action startGetPPA(Bit#(32) numKtHigh, Bit#(32) numKtLow);
-	method ActionValue#(Bit#(32)) getPPAHigh(); // TODO: for testing only.. remove later
-	method ActionValue#(Bit#(32)) getPPALow(); // TODO: for testing only.. remove later
-	method ActionValue#(Bit#(32)) getPPARes(); // TODO: for testing only.. remove later
+	// TODO: testing.. guards on getPPAHigh/getPPALow needs to be fixed
+	method ActionValue#(Bit#(32)) getPPAHigh();
+	method ActionValue#(Bit#(32)) getPPALow();
+	method ActionValue#(Bit#(32)) getPPARes();
 
 	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
-	//method Action setDmaMergedKtRef(Bit#(32) sgId);
-	//method Action setDmaInvalPPARef(Bit#(32) sgId);
-
-	//method ActionValue#(FlashCmd) getFlashReq();
-	//method Action enqFlashWordRead(Tuple2#(Bit#(WordSz), TagT) taggedRdata);
-	//method ActionValue#(Tuple2#(Bit#(WordSz), TagT)) getFlashWordWrite();
-	//method Action flashWriteReq(TagT tag);
 endinterface
 
 module mkKtAddrManager #(
 	Vector#(4, MemReadEngineServer#(DataBusWidth)) rs
-	//,Vector#(2, MemWriteEngineServer#(DataBusWidth)) ws
 ) (KtAddrManager);
 	// DMA SgId for Flash Addresses (High KT, Low KT) and destination KT Flash Addresses
 	// [0]: High Level, [1]: Low Level, [2]: Merged result
 	Vector#(3, Reg#(Bit#(32))) dmaPPASgid <- replicateM(mkReg(0));
-
-	//Reg#(Bit#(32)) dmaSgidKtHighPPA <- mkReg(0);
-	//Reg#(Bit#(32)) dmaSgidKtLowPPA <- mkReg(0);
-	//Reg#(Bit#(32)) dmaSgidKtGenPPA <- mkReg(0);
-
-	// DMA SgID for merged KT back to Host and invalidated flash addr collected
-	// Reg#(Bit#(32)) dmaSgidMergedKt <- mkReg(0);
-	// Reg#(Bit#(32)) dmaSgidInvalPPA <- mkReg(0);
 
 	///////////////////////////////////////////////////
 	// Generate read request for PPA lists (High/Low)
@@ -181,7 +168,6 @@ module mkKtAddrManager #(
 		genPPAReq[1].enq(numKtLow);
 		//genPPAReq[2].enq(numKtHigh+numKtLow); // ppa to write back merged KT
 
-		//merger.runMerge(numKtHigh, numKtLow);
 		highPPACnt <= 0;
 		lowPPACnt <= 0;
 		highPPATotal <= numKtHigh;
@@ -193,10 +179,4 @@ module mkKtAddrManager #(
 		dmaPPASgid[1] <= sgIdLow;
 		dmaPPASgid[2] <= sgIdRes;
 	endmethod
-//	method Action setDmaMergedKtRef(Bit#(32) sgId);
-//		dmaSgidMergedKt <= sgId;
-//	endmethod
-//	method Action setDmaInvalPPARef(Bit#(32) sgId);
-//		dmaSgidInvalPPA <= sgId;
-//	endmethod
 endmodule
