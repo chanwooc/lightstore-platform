@@ -31,7 +31,7 @@ import ControllerTypes::*;
 import FlashCtrlZcu::*;
 import FlashCtrlModel::*;
 
-import KtMergerManager::*;
+import KtAddrManager::*;
 `include "ConnectalProjectConfig.bsv"
 
 import Top_Pins::*;
@@ -216,15 +216,15 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//--------------------------------------------
 	// TODO: PPA request test
 	//--------------------------------------------
-	KtMergerManager merger <- mkKtMergerManager(re[2].readServers, we[4].writeServers);
+	KtAddrManager ktAddrMgr <- mkKtAddrManager(re[2].readServers); //, we[4].writeServers);
 
 	rule indPPAHigh;
-		let d <- merger.getPPAHigh;
+		let d <- ktAddrMgr.getPPAHigh;
 		indication.ppaEchoHigh(d);
 	endrule
 
 	rule indPPALow;
-		let d <- merger.getPPALow;
+		let d <- ktAddrMgr.getPPALow;
 		indication.ppaEchoLow(d);
 	endrule
 
@@ -583,12 +583,11 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 //			dmaWriteSgid2 <= sgId;
 //		endmethod
 		method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow);
-			merger.setDmaKtPPARef(sgIdHigh, sgIdLow, 0);
+			ktAddrMgr.setDmaKtPPARef(sgIdHigh, sgIdLow, 0);
 		endmethod
 		method Action startPpa(Bit#(32) cntHigh, Bit#(32) cntLow);
-			merger.runMerge(cntHigh, cntLow);
+			ktAddrMgr.startGetPPA(cntHigh, cntLow);
 		endmethod
-
 
 		method Action start(Bit#(32) dummy);
 			started <= True;

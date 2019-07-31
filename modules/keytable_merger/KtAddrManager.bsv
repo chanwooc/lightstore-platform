@@ -27,28 +27,26 @@ import XilinxCells ::*;
 import ControllerTypes::*;
 import KeytableMerger::*;
 
-interface KtMergerManager;
-	method Action runMerge(Bit#(32) numKtHigh, Bit#(32) numKtLow);
+interface KtAddrManager;
+	method Action startGetPPA(Bit#(32) numKtHigh, Bit#(32) numKtLow);
 	method ActionValue#(Bit#(32)) getPPAHigh(); // TODO: for testing only.. remove later
 	method ActionValue#(Bit#(32)) getPPALow(); // TODO: for testing only.. remove later
+	method ActionValue#(Bit#(32)) getPPARes(); // TODO: for testing only.. remove later
 
 	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
-	method Action setDmaMergedKtRef(Bit#(32) sgId);
-	method Action setDmaInvalPPARef(Bit#(32) sgId);
+	//method Action setDmaMergedKtRef(Bit#(32) sgId);
+	//method Action setDmaInvalPPARef(Bit#(32) sgId);
 
-	method ActionValue#(FlashCmd) getFlashReq();
-	method Action enqFlashWordRead(Tuple2#(Bit#(WordSz), TagT) taggedRdata);
-	method ActionValue#(Tuple2#(Bit#(WordSz), TagT)) getFlashWordWrite();
-	method Action flashWriteReq(TagT tag);
+	//method ActionValue#(FlashCmd) getFlashReq();
+	//method Action enqFlashWordRead(Tuple2#(Bit#(WordSz), TagT) taggedRdata);
+	//method ActionValue#(Tuple2#(Bit#(WordSz), TagT)) getFlashWordWrite();
+	//method Action flashWriteReq(TagT tag);
 endinterface
 
-module mkKtMergerManager #(
-	Vector#(4, MemReadEngineServer#(DataBusWidth)) rs,
-	Vector#(2, MemWriteEngineServer#(DataBusWidth)) ws
-) (KtMergerManager);
-	// Merger
-	MergeKeytable merger <- mkMergeKeytable;
-
+module mkKtAddrManager #(
+	Vector#(4, MemReadEngineServer#(DataBusWidth)) rs
+	//,Vector#(2, MemWriteEngineServer#(DataBusWidth)) ws
+) (KtAddrManager);
 	// DMA SgId for Flash Addresses (High KT, Low KT) and destination KT Flash Addresses
 	// [0]: High Level, [1]: Low Level, [2]: Merged result
 	Vector#(3, Reg#(Bit#(32))) dmaPPASgid <- replicateM(mkReg(0));
@@ -58,8 +56,8 @@ module mkKtMergerManager #(
 	//Reg#(Bit#(32)) dmaSgidKtGenPPA <- mkReg(0);
 
 	// DMA SgID for merged KT back to Host and invalidated flash addr collected
-	Reg#(Bit#(32)) dmaSgidMergedKt <- mkReg(0);
-	Reg#(Bit#(32)) dmaSgidInvalPPA <- mkReg(0);
+	// Reg#(Bit#(32)) dmaSgidMergedKt <- mkReg(0);
+	// Reg#(Bit#(32)) dmaSgidInvalPPA <- mkReg(0);
 
 	///////////////////////////////////////////////////
 	// Generate read request for PPA lists (High/Low)
@@ -173,7 +171,12 @@ module mkKtMergerManager #(
 		return ppaList[1].first;
 	endmethod
 
-	method Action runMerge(Bit#(32) numKtHigh, Bit#(32) numKtLow);
+	method ActionValue#(Bit#(32)) getPPARes(); // TODO: for testing only.. remove later
+		ppaList[2].deq;
+		return ppaList[2].first;
+	endmethod
+
+	method Action startGetPPA(Bit#(32) numKtHigh, Bit#(32) numKtLow);
 		genPPAReq[0].enq(numKtHigh);
 		genPPAReq[1].enq(numKtLow);
 		//genPPAReq[2].enq(numKtHigh+numKtLow); // ppa to write back merged KT
@@ -190,10 +193,10 @@ module mkKtMergerManager #(
 		dmaPPASgid[1] <= sgIdLow;
 		dmaPPASgid[2] <= sgIdRes;
 	endmethod
-	method Action setDmaMergedKtRef(Bit#(32) sgId);
-		dmaSgidMergedKt <= sgId;
-	endmethod
-	method Action setDmaInvalPPARef(Bit#(32) sgId);
-		dmaSgidInvalPPA <= sgId;
-	endmethod
+//	method Action setDmaMergedKtRef(Bit#(32) sgId);
+//		dmaSgidMergedKt <= sgId;
+//	endmethod
+//	method Action setDmaInvalPPARef(Bit#(32) sgId);
+//		dmaSgidInvalPPA <= sgId;
+//	endmethod
 endmodule
