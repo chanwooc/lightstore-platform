@@ -49,8 +49,8 @@ interface FlashRequest;
 
 	//method Action doDmaTest(Bit#(32) dummy);
 	//method Action setDmaWriteRef2(Bit#(32) sgId);
-	method Action setDmaKtPPARef(Bit#(32) sgIdHigh); // TODO: test
-	method Action startPpa(Bit#(32) cnt_high);
+	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow); // TODO: test
+	method Action startPpa(Bit#(32) cntHigh, Bit#(32) cntLow);
 
 	method Action start(Bit#(32) dummy);
 	method Action debugDumpReq(Bit#(32) dummy);
@@ -58,7 +58,8 @@ interface FlashRequest;
 endinterface
 
 interface FlashIndication;
-	method Action highPpaEcho(Bit#(32) ppa); // TODO: test..
+	method Action ppaEchoHigh(Bit#(32) ppa); // TODO: test..
+	method Action ppaEchoLow(Bit#(32) ppa); // TODO: test..
 	method Action readDone(Bit#(32) tag);
 	method Action writeDone(Bit#(32) tag);
 	method Action eraseDone(Bit#(32) tag, Bit#(32) status);
@@ -217,9 +218,14 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//--------------------------------------------
 	KtMergerManager merger <- mkKtMergerManager(re[2].readServers, we[4].writeServers);
 
-	rule indPPA;
-		let d <- merger.getPPA;
-		indication.highPpaEcho(d);
+	rule indPPAHigh;
+		let d <- merger.getPPAHigh;
+		indication.ppaEchoHigh(d);
+	endrule
+
+	rule indPPALow;
+		let d <- merger.getPPALow;
+		indication.ppaEchoLow(d);
 	endrule
 
 	//--------------------------------------------
@@ -576,11 +582,11 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 //		method Action setDmaWriteRef2(Bit#(32) sgId);
 //			dmaWriteSgid2 <= sgId;
 //		endmethod
-		method Action setDmaKtPPARef(Bit#(32) sgIdHigh);
-			merger.setDmaKtPPARef(sgIdHigh, 0, 0);
+		method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow);
+			merger.setDmaKtPPARef(sgIdHigh, sgIdLow, 0);
 		endmethod
-		method Action startPpa(Bit#(32) cnt_high);
-			merger.runMerge(cnt_high, 11);
+		method Action startPpa(Bit#(32) cntHigh, Bit#(32) cntLow);
+			merger.runMerge(cntHigh, cntLow);
 		endmethod
 
 

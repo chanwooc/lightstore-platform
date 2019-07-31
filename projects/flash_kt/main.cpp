@@ -144,8 +144,16 @@ class FlashIndication: public FlashIndicationWrapper {
 //		virtual void dmaTestDone(unsigned int tag) {
 //			fprintf(stderr, "DMA SideBand Test Done\n" );
 //		}
-		virtual void highPpaEcho(unsigned int ppa) {
-			fprintf(stderr, "ppa: %u\n", ppa);
+		virtual void ppaEchoHigh(unsigned int ppa) {
+			fprintf(stderr, "ppaHigh: %u\n", ppa);
+			fflush(stderr);
+			pthread_mutex_lock(&flashReqMutex);
+			testAckCount = testAckCount+1;
+			pthread_mutex_unlock(&flashReqMutex);
+		}
+
+		virtual void ppaEchoLow(unsigned int ppa) {
+			fprintf(stderr, "ppaLow: %u\n", ppa);
 			fflush(stderr);
 			pthread_mutex_lock(&flashReqMutex);
 			testAckCount = testAckCount+1;
@@ -594,19 +602,30 @@ int main(int argc, const char **argv)
 
 	fprintf(stderr, "PPA Test\n");
 	int highPpaAlloc = portalAlloc(4*1024*200, 0);
+	int lowPpaAlloc = portalAlloc(4*1024*200, 0);
 	unsigned int* highPpaBuf = (unsigned int*)portalMmap(highPpaAlloc, 4*1024*200);
+	unsigned int* lowPpaBuf = (unsigned int*)portalMmap(lowPpaAlloc, 4*1024*200);
 
 	fprintf(stderr, "highPpaAlloc = %x\n", highPpaAlloc); 
+	fprintf(stderr, "lowPpaAlloc = %x\n", lowPpaAlloc); 
 	portalCacheFlush(highPpaAlloc, highPpaBuf, 4*1024*200, 1);
+	portalCacheFlush(lowPpaAlloc, lowPpaBuf, 4*1024*200, 1);
 	unsigned int ref_highPpaAlloc = dma->reference(highPpaAlloc);
-	device->setDmaKtPPARef(ref_highPpaAlloc);
+	unsigned int ref_lowPpaAlloc = dma->reference(lowPpaAlloc);
+	device->setDmaKtPPARef(ref_highPpaAlloc, ref_lowPpaAlloc);
 
-	unsigned int numTable=5217;
-	for (unsigned int t=0; t < numTable; t++) {
-		highPpaBuf[t] = t;
+	unsigned int numTableHigh=5217;
+	for (unsigned int t=0; t < numTableHigh; t++) {
+		highPpaBuf[t] = t+1;
 	}
-	fprintf(stderr, "Start PPA: %u\n", numTable); 
-	device->startPpa(numTable);
+
+	unsigned int numTableLow=517;
+	for (unsigned int t=0; t < numTableLow; t++) {
+		lowPpaBuf[t] = numTableLow-t;
+	}
+
+	fprintf(stderr, "Start PPA: %u %u\n", numTableHigh, numTableLow); 
+	device->startPpa(numTableHigh, numTableLow);
 
 	int elapsed = 10000;
 	while (true) {
@@ -618,7 +637,7 @@ int main(int argc, const char **argv)
 		else {
 			elapsed--;
 		}
-		if ( getTestAckCount() == (int)numTable ) break;
+		if ( getTestAckCount() == (int)(numTableHigh+numTableLow) ) break;
 	}
 
 	sleep(1);

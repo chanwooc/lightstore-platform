@@ -29,7 +29,8 @@ import KeytableMerger::*;
 
 interface KtMergerManager;
 	method Action runMerge(Bit#(32) numKtHigh, Bit#(32) numKtLow);
-	method ActionValue#(Bit#(32)) getPPA(); // TODO: for testing only.. remove later
+	method ActionValue#(Bit#(32)) getPPAHigh(); // TODO: for testing only.. remove later
+	method ActionValue#(Bit#(32)) getPPALow(); // TODO: for testing only.. remove later
 
 	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
 	method Action setDmaMergedKtRef(Bit#(32) sgId);
@@ -155,14 +156,19 @@ module mkKtMergerManager #(
 	// Interface
 	/////////////////////////////////////
 
-	method ActionValue#(Bit#(32)) getPPA(); // TODO: for testing only.. remove later
+	method ActionValue#(Bit#(32)) getPPAHigh(); // TODO: for testing only.. remove later
 		ppaList[0].deq;
 		return ppaList[0].first;
 	endmethod
 
+	method ActionValue#(Bit#(32)) getPPALow(); // TODO: for testing only.. remove later
+		ppaList[1].deq;
+		return ppaList[1].first;
+	endmethod
+
 	method Action runMerge(Bit#(32) numKtHigh, Bit#(32) numKtLow);
 		genPPAReq[0].enq(numKtHigh);
-		//genPPAReq[1].enq(numKtLow);
+		genPPAReq[1].enq(numKtLow);
 		//genPPAReq[2].enq(numKtHigh+numKtLow); // ppa to write back merged KT
 
 		//merger.runMerge(numKtHigh, numKtLow);
