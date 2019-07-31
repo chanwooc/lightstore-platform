@@ -156,12 +156,19 @@ module mkKtMergerManager #(
 	// Interface
 	/////////////////////////////////////
 
-	method ActionValue#(Bit#(32)) getPPAHigh(); // TODO: for testing only.. remove later
+	Reg#(Bit#(32)) highPPACnt <- mkReg(0);
+	Reg#(Bit#(32)) highPPATotal <- mkReg(0);
+
+	Reg#(Bit#(32)) lowPPACnt <- mkReg(0);
+	Reg#(Bit#(32)) lowPPATotal <- mkReg(0);
+	method ActionValue#(Bit#(32)) getPPAHigh() if( lowPPACnt == lowPPATotal || lowPPACnt > highPPACnt || (highPPACnt-lowPPACnt) < 16 );
+		highPPACnt <= highPPACnt + 1;
 		ppaList[0].deq;
 		return ppaList[0].first;
 	endmethod
 
-	method ActionValue#(Bit#(32)) getPPALow(); // TODO: for testing only.. remove later
+	method ActionValue#(Bit#(32)) getPPALow() if ( highPPACnt == highPPATotal || lowPPACnt < highPPACnt || (lowPPACnt-highPPACnt) < 16 ); // TODO: for testing only.. remove later
+		lowPPACnt <= lowPPACnt + 1;
 		ppaList[1].deq;
 		return ppaList[1].first;
 	endmethod
@@ -172,6 +179,10 @@ module mkKtMergerManager #(
 		//genPPAReq[2].enq(numKtHigh+numKtLow); // ppa to write back merged KT
 
 		//merger.runMerge(numKtHigh, numKtLow);
+		highPPACnt <= 0;
+		lowPPACnt <= 0;
+		highPPATotal <= numKtHigh;
+		lowPPATotal <= numKtLow;
 	endmethod
 
 	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
