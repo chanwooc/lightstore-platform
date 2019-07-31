@@ -68,7 +68,7 @@ typedef enum {
 	OPERATING
 } MergerStatus deriving (Bits, Eq);
 
-interface MergeKeytable;
+interface KeytableMerger;
 	method Action runMerge(Bit#(32) numHighLvlKt, Bit#(32) numLowLvlKt);
 
 	method Action enqHighLevelKt(Bit#(WordSz) beat);
@@ -80,7 +80,7 @@ interface MergeKeytable;
 endinterface
 
 (* synthesize *)
-module mkMergeKeytable (MergeKeytable ifc);
+module mkKeytableMerger (KeytableMerger ifc);
 
 	Reg#(Bit#(32)) cnt <- mkReg(0);
 
