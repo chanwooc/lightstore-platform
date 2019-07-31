@@ -36,10 +36,10 @@ CONNECTALFLAGS += -D MMU_INDEX_WIDTH=13     # To support larger MMU table (porta
 BSVFILES = Main.bsv \
 	../../modules/keytable_merger/KeytableMerger.bsv \
 	../../lib/AuroraCommon.bsv \
-	../../modules/aurora_intra/AuroraIntraZcu.bsv \
-	../../modules/flash_ctrl/common/FlashBusModel.bsv \
-	../../modules/flash_ctrl/model_zcu/FlashCtrlModel.bsv \
-	../../modules/flash_ctrl/hw_zcu/FlashCtrlZcu.bsv
+	../../platform/aurora_intra/AuroraIntraZcu.bsv \
+	../../platform/flash_ctrl/common/FlashBusModel.bsv \
+	../../platform/flash_ctrl/model_zcu/FlashCtrlModel.bsv \
+	../../platform/flash_ctrl/hw_zcu/FlashCtrlZcu.bsv
 
 CPPFILES=main.cpp
 
@@ -52,11 +52,11 @@ else
 NOHOST_XDC = ../../misc/nohost_zcu.xdc
 
 CONNECTALFLAGS += \
-	--verilog ../../modules/aurora_intra/xilinx/ \
+	--verilog ../../platform/aurora_intra/xilinx/ \
 	--xci $(CONNECTALDIR)/out/$(BOARD)/aurora_8b10b_zcu/aurora_8b10b_zcu.xci \
-	--constraint ../../modules/aurora_intra/xilinx/aurora_8b10b_zcu_exdes.xdc \
+	--constraint ../../platform/aurora_intra/xilinx/aurora_8b10b_zcu_exdes.xdc \
 	--constraint $(NOHOST_XDC) \
-	--implconstraint ../../modules/aurora_intra/xilinx/aurora_8b10b_zcu_exdes.xdc \
+	--implconstraint ../../platform/aurora_intra/xilinx/aurora_8b10b_zcu_exdes.xdc \
 	--implconstraint $(NOHOST_XDC) 
 
 $(IPDIR)/$(BOARD)/aurora_8b10b_zcu/aurora_8b10b_zcu.xci: ../../coregen/synth-aurora-intra-zcu.tcl

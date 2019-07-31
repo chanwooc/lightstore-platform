@@ -27,7 +27,7 @@ CONNECTALFLAGS += -D MMU_INDEX_WIDTH=13     # To support larger MMU table (porta
 
 BSVFILES = Main.bsv \
 	../../../modules/keytable_merger/KeytableMerger.bsv \
-	../../../modules/flash_ctrl/common/FlashBusModel.bsv
+	../../../platform/flash_ctrl/common/FlashBusModel.bsv
 
 CPPFILES=main.cpp
 
