@@ -32,7 +32,7 @@ import KtAddrManager::*;
 
 
 // LightStore Keytable Merge Manager
-interface LsKtMergeManager;
+interface LightStoreKtMerger;
 	method Action startGetPPA(Bit#(32) numKtHigh, Bit#(32) numKtLow);
 	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
 //	method Action setDmaMergedKtRef(Bit#(32) sgId);
@@ -50,10 +50,10 @@ endinterface
 
 // Supposed to use tags: 64~127 (tag[7]=1)
 //  For read PPAs (High, Low), we split tags 32 / 32 (tag[6]=High?)
-module mkLsKtMergeManager #(
+module mkLightStoreKtMerger #(
 	Vector#(4, MemReadEngineServer#(DataBusWidth)) rs,
 	Vector#(2, MemWriteEngineServer#(DataBusWidth)) ws
-) (LsKtMergeManager);
+) (LightStoreKtMerger);
 
 	KtAddrManager addrManager <- mkKtAddrManager(rs);
 	KeytableMerger ktMerger <- mkKeytableMerger;

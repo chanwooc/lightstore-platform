@@ -34,7 +34,7 @@ CONNECTALFLAGS += -D DEFAULT_NOPROGRAM=1    # To suppress automatic fpga program
 CONNECTALFLAGS += -D MMU_INDEX_WIDTH=13     # To support larger MMU table (portalAlloc up to 8GB)
 
 BSVFILES = Main.bsv \
-	../../modules/keytable_merger/LsKtMergeManager.bsv \
+	../../modules/keytable_merger/LightStoreKtMerger.bsv \
 	../../lib/LibDummy.bsv \
 	../../platform/aurora_intra/AuroraIntraZcu.bsv \
 	../../platform/flash_ctrl/common/FlashBusModel.bsv \

@@ -31,7 +31,7 @@ import ControllerTypes::*;
 import FlashCtrlZcu::*;
 import FlashCtrlModel::*;
 
-import LsKtMergeManager::*; // LightStore Keytable Compaction Manager
+import LightStoreKtMerger::*; // LightStore Keytable Compaction Manager
 import FlashSwitch::*;
 import FlashReadMultiplex::*;
 `include "ConnectalProjectConfig.bsv"
@@ -49,8 +49,6 @@ interface FlashRequest;
 	method Action setDmaReadRef(Bit#(32) sgId);
 	method Action setDmaWriteRef(Bit#(32) sgId);
 
-	//method Action doDmaTest(Bit#(32) dummy);
-	//method Action setDmaWriteRef2(Bit#(32) sgId);
 	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow); // TODO: test
 	method Action startPpa(Bit#(32) cntHigh, Bit#(32) cntLow);
 
@@ -183,50 +181,10 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Reg#(Bit#(32)) debugReadCnt <- mkReg(0);
 	Reg#(Bit#(32)) debugWriteCnt <- mkReg(0);
 
-
-//	//--------------------------------------------
-//	// TODO: Test (DMA Write) - Side Band
-//	//--------------------------------------------
-//	Reg#(Bit#(32)) dmaWriteSgid2 <- mkReg(0);
-//	FIFO#(Bool) dmaTestCmdQ <- mkFIFO;
-//	FIFO#(Bool) dmaTestReq2RespQ <- mkFIFO;
-//
-//	rule driveTestDMAReq;
-//		dmaTestCmdQ.deq;
-//
-//		let dmaCmd = MemengineCmd {
-//							sglId: dmaWriteSgid2, 
-//							base: 0,
-//							len:fromInteger(dmaLength), 
-//							burstLen:fromInteger(dmaBurstBytes)
-//						};
-//
-//		we[4].writeServers[0].request.put(dmaCmd);
-//
-//		dmaTestReq2RespQ.enq(True);
-//	endrule
-//
-//	Reg#(Bit#(32)) beatCnt <- mkReg(0);
-//	rule driveTestDMAData;
-//		let a = dmaTestReq2RespQ.first;
-//		if (a == True && beatCnt < 512) beatCnt <= beatCnt+1;
-//		else begin
-//			beatCnt <= 0;
-//			dmaTestReq2RespQ.deq;
-//		end
-//		
-//		we[4].writeServers[0].data.enq('hDEADBEEFABCDEFEF);
-//	endrule
-//
-//	rule driveTestDMADone;
-//		let d <- we[4].writeServers[0].done.get;
-//		indication.dmaTestDone(11);
-//	endrule
-
 	//--------------------------------------------
 	// TODO: PPA request test
 	//--------------------------------------------
-	LsKtMergeManager ktMergeManager <- mkLsKtMergeManager(re[2].readServers, we[4].writeServers);
+	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(re[2].readServers, we[4].writeServers);
 
 	// TODO: Tests to be removed
 	rule indPPAHigh;
@@ -572,14 +530,6 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 			flashCmdQ.enq(fcmd);
 		endmethod
 
-//		method Action addDmaReadRefs(Bit#(32) pointer, Bit#(32) offset, Bit#(32) tag);
-//			dmaReadRefs[tag] <= tuple2(pointer, offset);
-//		endmethod
-//
-//		method Action addDmaWriteRefs(Bit#(32) pointer, Bit#(32) offset, Bit#(32) tag);
-//			dmaWriteRefs[tag] <= tuple2(pointer, offset);
-//		endmethod
-
 		method Action setDmaReadRef(Bit#(32) sgId);
 			dmaReadSgid <= sgId;
 		endmethod
@@ -588,12 +538,6 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 			dmaWriteSgid <= sgId;
 		endmethod
 
-//		method Action doDmaTest(Bit#(32) dummy);
-//			dmaTestCmdQ.enq(True);
-//		endmethod
-//		method Action setDmaWriteRef2(Bit#(32) sgId);
-//			dmaWriteSgid2 <= sgId;
-//		endmethod
 		method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow);
 			ktMergeManager.setDmaKtPPARef(sgIdHigh, sgIdLow, 0);
 		endmethod
@@ -613,7 +557,6 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 			delayRegSet <= debugDelay;
 			debugFlag <= flag;
 		endmethod
-
 	endinterface //FlashRequest
 
 	interface dmaWriteClient = dmaWriteClientVec;
