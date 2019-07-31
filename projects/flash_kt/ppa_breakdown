@@ -1,0 +1,11 @@
+bus  = ppa[2:0];
+chip = ppa[5:3];
+page = ppa[13:6];
+block = ppa[31:14];
+
+ppa = (block<<14) | ((page & 0xFF)<<6) | ((chip & 0x7)<<3) | (bus&0x7)
+
+bus  = ppa & 0x7;
+chip = (ppa >> 3) & 0x7;
+page = (ppa >> 6) & 0xFF;
+block = (ppa >> 14);
