@@ -49,9 +49,12 @@ module mkKtMergerManager #(
 	MergeKeytable merger <- mkMergeKeytable;
 
 	// DMA SgId for Flash Addresses (High KT, Low KT) and destination KT Flash Addresses
-	Reg#(Bit#(32)) dmaSgidKtHighPPA <- mkReg(0);
-	Reg#(Bit#(32)) dmaSgidKtLowPPA <- mkReg(0);
-	Reg#(Bit#(32)) dmaSgidKtGenPPA <- mkReg(0);
+	// [0]: High Level, [1]: Low Level, [2]: Merged result
+	Vector#(3, Reg#(Bit#(32))) dmaPPASgid <- replicateM(mkReg(0));
+
+	//Reg#(Bit#(32)) dmaSgidKtHighPPA <- mkReg(0);
+	//Reg#(Bit#(32)) dmaSgidKtLowPPA <- mkReg(0);
+	//Reg#(Bit#(32)) dmaSgidKtGenPPA <- mkReg(0);
 
 	// DMA SgID for merged KT back to Host and invalidated flash addr collected
 	Reg#(Bit#(32)) dmaSgidMergedKt <- mkReg(0);
@@ -63,105 +66,112 @@ module mkKtMergerManager #(
 	///////////////////////////////////////////////////
 	Integer dmaBurstBytes = 128;
 
-	FIFOF#(Bit#(32)) genHighPPAReq <- mkFIFOF;
-	FIFOF#(Bit#(32)) genLowPPAReq <- mkFIFOF;
+	// [0]: High Level, [1]: Low Level, [2]: Merged result
+	Vector#(3, FIFOF#(Bit#(32))) genPPAReq <- replicateM(mkFIFOF);
+	Vector#(3, FIFOF#(Bit#(32))) ppaList <- replicateM(mkSizedFIFOF(32)); 
 
-	Reg#(Bit#(32)) highPPAReqSent <- mkReg(0);
-	FIFOF#(Tuple2#(Bool,Bit#(5))) dmaHighPPAReqToResp <- mkSizedFIFOF(4); // TODO: match ReadEngine cmdQDepth
-	rule generateHighPPAReq;
-		// each req is 8Beat=128B holding 32 PPA entries
-		// for every 32 KT PPAs, DMA req needs to be generated
-		let dmaCmd = MemengineCmd {
-							sglId: dmaSgidKtHighPPA, 
-							base: zeroExtend(highPPAReqSent<<7), // <<7 or *128
-							len:fromInteger(dmaBurstBytes), 
-							burstLen:fromInteger(dmaBurstBytes)
-						};
-		rs[0].request.put(dmaCmd);
+	for (Integer i=0; i<3; i=i+1) begin
+		Reg#(Bit#(32)) ppaReqSent <- mkReg(0);
+		FIFOF#(Tuple2#(Bool,Bit#(5))) dmaPPAReqToResp <- mkSizedFIFOF(4); // TODO: match ReadEngine cmdQDepth
+		rule generatePPAReq;
+			// each req is 8Beat=128B holding 32 PPA entries
+			// for every 32 KT PPAs, DMA req needs to be generated
+			let dmaCmd = MemengineCmd {
+								sglId: dmaPPASgid[i], 
+								base: zeroExtend(ppaReqSent<<7), // <<7 or *128
+								len:fromInteger(dmaBurstBytes), 
+								burstLen:fromInteger(dmaBurstBytes)
+							};
+			rs[i].request.put(dmaCmd);
 
-		if ( highPPAReqSent < ((genHighPPAReq.first-1)>>5) /*+1 -1*/ ) begin
-			highPPAReqSent <= highPPAReqSent + 1;
+			if ( ppaReqSent < ((genPPAReq[i].first-1)>>5) /*+1 -1*/ ) begin
+				ppaReqSent <= ppaReqSent + 1;
 
-			// non-last request (= 32 LPA all valid)
-			dmaHighPPAReqToResp.enq(tuple2(False,?)); 
-		end
-		else begin
-			// Sending the last request @ highPPAReqSent == ((genHighPPAReq.first-1)>>5)+1-1
-			genHighPPAReq.deq;
-			highPPAReqSent <= 0;
-
-			// last request (= 1-32 elems are valid, 32 is encoded 0)
-			dmaHighPPAReqToResp.enq(tuple2(True, genHighPPAReq.first[4:0])); 
-		end
-	endrule
-
-	// Bit#(2) to indicate # of valid elements in a word (max 4)
-	// 4 is encoded 0 instead
-	FIFOF#(Tuple2#(Bit#(2),Bit#(WordSz))) highPPAList4Elem <- mkSizedFIFOF(8); 
-	Reg#(Bit#(8)) highPPARespBeat <- mkReg(0);
-	rule collectHighPPAResp;
-		let d <- toGet(rs[0].data).get;
-		if (tpl_1(dmaHighPPAReqToResp.first) == False) begin
-			// Not last request, so receive 8 full beats
-			highPPAList4Elem.enq(tuple2(2'b0, d.data));
-			if (highPPARespBeat < 7) highPPARespBeat <= highPPARespBeat+1;
+				// non-last request (= 32 LPA all valid)
+				dmaPPAReqToResp.enq(tuple2(False,?)); 
+			end
 			else begin
-				highPPARespBeat <= 0;
-				dmaHighPPAReqToResp.deq;
-			end
-		end 
-		else begin
-			Bit#(8) numValidElem = zeroExtend(tpl_2(dmaHighPPAReqToResp.first)); // 0-31, and 0 encodes "32"
-			if (numValidElem == 0) numValidElem=32;
+				// Sending the last request @ ppaReqSent == ((genPPAReq[i].first-1)>>5)+1-1
+				genPPAReq[i].deq;
+				ppaReqSent <= 0;
 
-			if ( ((highPPARespBeat+1)<<2) <= numValidElem ) begin
-				highPPAList4Elem.enq(tuple2(2'b0, d.data));
+				// last request (= 1-32 elems are valid, 32 is encoded 0)
+				dmaPPAReqToResp.enq(tuple2(True, genPPAReq[i].first[4:0])); 
 			end
-			else if ( (highPPARespBeat<<2) <= numValidElem ) begin
-				Bit#(8) remainElem = numValidElem - ( highPPARespBeat<<2 );
-				highPPAList4Elem.enq(tuple2(truncate(remainElem), d.data));
-			end
+		endrule
 
-			if (highPPARespBeat < 7) highPPARespBeat <= highPPARespBeat+1;
+		// Bit#(2) to indicate # of valid elements in a word (max 4)
+		// 4 is encoded 0 instead
+		FIFOF#(Tuple2#(Bit#(2),Bit#(WordSz))) ppaList4Elem <- mkSizedFIFOF(8); 
+		Reg#(Bit#(8)) ppaRespBeat <- mkReg(0);
+		rule collectPPAResp;
+			let d <- toGet(rs[i].data).get;
+			if (tpl_1(dmaPPAReqToResp.first) == False) begin
+				// Not last request, so receive 8 full beats
+				ppaList4Elem.enq(tuple2(2'b0, d.data));
+				if (ppaRespBeat < 7) ppaRespBeat <= ppaRespBeat+1;
+				else begin
+					ppaRespBeat <= 0;
+					dmaPPAReqToResp.deq;
+				end
+			end 
 			else begin
-				highPPARespBeat <= 0;
-				dmaHighPPAReqToResp.deq;
+				Bit#(8) numValidElem = zeroExtend(tpl_2(dmaPPAReqToResp.first)); // 0-31, and 0 encodes "32"
+				if (numValidElem == 0) numValidElem=32;
+
+				if ( ((ppaRespBeat+1)<<2) <= numValidElem ) begin
+					ppaList4Elem.enq(tuple2(2'b0, d.data));
+				end
+				else if ( (ppaRespBeat<<2) <= numValidElem ) begin
+					Bit#(8) remainElem = numValidElem - ( ppaRespBeat<<2 );
+					ppaList4Elem.enq(tuple2(truncate(remainElem), d.data));
+				end
+
+				if (ppaRespBeat < 7) ppaRespBeat <= ppaRespBeat+1;
+				else begin
+					ppaRespBeat <= 0;
+					dmaPPAReqToResp.deq;
+				end
 			end
-		end
-	endrule
+		endrule
 
-	FIFOF#(Bit#(32)) highPPAList <- mkSizedFIFOF(32); 
-	Reg#(Bit#(2)) parseHighPnt <- mkReg(0);
-	rule parseHighPPA;
-		let numVal = tpl_1(highPPAList4Elem.first); // 0-3, 0 encodes that all 4 PPAs are valid
-		Vector#(4, Bit#(32)) d = unpack(tpl_2(highPPAList4Elem.first));
+		Reg#(Bit#(2)) parsePnt <- mkReg(0);
+		rule parsePPA4to1;
+			let numVal = tpl_1(ppaList4Elem.first); // 0-3, 0 encodes that all 4 PPAs are valid
+			Vector#(4, Bit#(32)) d = unpack(tpl_2(ppaList4Elem.first));
 
-		highPPAList.enq(pack(d[parseHighPnt]));
-		if( parseHighPnt == 3 || (parseHighPnt+1 == numVal) ) begin
-			parseHighPnt <= 0;
-			highPPAList4Elem.deq;
-		end
-		else begin
-			parseHighPnt <= parseHighPnt + 1;
-		end
-	endrule
+			ppaList[i].enq(pack(d[parsePnt]));
+			if( parsePnt == 3 || (parsePnt+1 == numVal) ) begin
+				parsePnt <= 0;
+				ppaList4Elem.deq;
+			end
+			else begin
+				parsePnt <= parsePnt + 1;
+			end
+		endrule
+	end
+
+	/////////////////////////////////////
+	// Interface
+	/////////////////////////////////////
 
 	method ActionValue#(Bit#(32)) getPPA(); // TODO: for testing only.. remove later
-		highPPAList.deq;
-		return highPPAList.first;
+		ppaList[0].deq;
+		return ppaList[0].first;
 	endmethod
 
 	method Action runMerge(Bit#(32) numKtHigh, Bit#(32) numKtLow);
-		genHighPPAReq.enq(numKtHigh);
-		genLowPPAReq.enq(numKtLow);
+		genPPAReq[0].enq(numKtHigh);
+		//genPPAReq[1].enq(numKtLow);
+		//genPPAReq[2].enq(numKtHigh+numKtLow); // ppa to write back merged KT
 
 		//merger.runMerge(numKtHigh, numKtLow);
 	endmethod
 
 	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
-		dmaSgidKtHighPPA <= sgIdHigh;
-		dmaSgidKtLowPPA <= sgIdLow;
-		dmaSgidKtGenPPA <= sgIdRes;
+		dmaPPASgid[0] <= sgIdHigh;
+		dmaPPASgid[1] <= sgIdLow;
+		dmaPPASgid[2] <= sgIdRes;
 	endmethod
 	method Action setDmaMergedKtRef(Bit#(32) sgId);
 		dmaSgidMergedKt <= sgId;

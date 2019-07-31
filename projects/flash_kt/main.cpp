@@ -621,6 +621,9 @@ int main(int argc, const char **argv)
 		if ( getTestAckCount() == (int)numTable ) break;
 	}
 
+	sleep(1);
+	sleep(1);
+
 	dma->dereference(ref_highPpaAlloc);
 	portalMunmap(highPpaBuf, 4*1024*200);
 
