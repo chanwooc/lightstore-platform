@@ -35,7 +35,7 @@ CONNECTALFLAGS += -D MMU_INDEX_WIDTH=13     # To support larger MMU table (porta
 
 BSVFILES = Main.bsv \
 	../../modules/keytable_merger/LsKtMergeManager.bsv \
-	../../lib/AuroraCommon.bsv \
+	../../lib/LibDummy.bsv \
 	../../platform/aurora_intra/AuroraIntraZcu.bsv \
 	../../platform/flash_ctrl/common/FlashBusModel.bsv \
 	../../platform/flash_ctrl/model_zcu/FlashCtrlModel.bsv \

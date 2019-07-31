@@ -58,13 +58,6 @@ module mkLsKtMergeManager #(
 	KtAddrManager addrManager <- mkKtAddrManager(rs);
 	KeytableMerger ktMerger <- mkKeytableMerger;
 
-	// Reorder Flash reads
-
-	// 1. Init tag
-	FIFOF#(TagT) readKtHighTagQ <- mkFIFOF;
-	FIFOF#(TagT) readKtLowTagQ <- mkFIFOF;
-	
-
 	method Action startGetPPA(Bit#(32) numKtHigh, Bit#(32) numKtLow);
 		addrManager.startGetPPA(numKtHigh, numKtLow);
 	endmethod

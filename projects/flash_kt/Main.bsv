@@ -32,6 +32,8 @@ import FlashCtrlZcu::*;
 import FlashCtrlModel::*;
 
 import LsKtMergeManager::*; // LightStore Keytable Compaction Manager
+import FlashSwitch::*;
+import FlashReadMultiplex::*;
 `include "ConnectalProjectConfig.bsv"
 
 import Top_Pins::*;
@@ -108,7 +110,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Vector#(NumTags, Reg#(Bit#(32))) dmaReadOffset <- replicateM(mkRegU());
 
 	//--------------------------------------------
-	// Flash Controller
+	// Flash Controller/Switch/Manager
 	//--------------------------------------------
 	GtClockImportIfc gt_clk_fmc1 <- mkGtClockImport;
 	`ifdef BSIM
@@ -116,6 +118,14 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	`else
 		FlashCtrlZcuIfc flashCtrl <- mkFlashCtrlZcu(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock);
 	`endif
+
+	FlashSwitch#(2) flashSwitch <- mkFlashSwitch; // users[1] for normal IO & users[0,2] for kt-merging
+	mkConnection(flashSwitch.flashCtrlClient, flashCtrl.user);
+
+	FlashCtrlUser hostFlashCtrlUser = flashSwitch.users[1];
+
+	FlashReadMultiplex#(2, 1) flashKtReader <- mkFlashReadMultiplex;
+	mkConnection(flashKtReader.flashClient[0], flashSwitch.users[0]);
 
 	//--------------------------------------------
 	// DMA Module Instantiation
@@ -162,7 +172,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		let cmd = flashCmdQ.first;
 		flashCmdQ.deq;
 		tag2busTable[cmd.tag] <= cmd.bus;
-		flashCtrl.user.sendCmd(cmd); //forward cmd to flash ctrl
+		hostFlashCtrlUser.sendCmd(cmd); //forward cmd to flash ctrl
 		$display("@%d: Main.bsv: received cmd tag=%d @%x %x %x %x", 
 						cycleCnt, cmd.tag, cmd.bus, cmd.chip, cmd.block, cmd.page);
 	endrule
@@ -249,7 +259,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 	rule doEnqReadFromFlash;
 		if (delayReg==0) begin
-			let taggedRdata <- flashCtrl.user.readWord();
+			let taggedRdata <- hostFlashCtrlUser.readWord();
 			debugReadCnt <= debugReadCnt + 1;
 			if (debugFlag==0) begin
 				dataFlash2DmaQ.enq(taggedRdata);
@@ -388,7 +398,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 	Reg#(BusT) dmaRBus <- mkReg(0);
 	rule handleWriteDataRequestFromFlash;
-		TagT tag <- flashCtrl.user.writeDataReq();
+		TagT tag <- hostFlashCtrlUser.writeDataReq();
 		//check which bus it's from
 		let bus = tag2busTable[tag];
 		//let bus = dmaRBus;
@@ -460,7 +470,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 		rule forwardDmaRdData;
 			writeWordPipe.deq;
-			flashCtrl.user.writeWord(writeWordPipe.first);
+			hostFlashCtrlUser.writeWord(writeWordPipe.first);
 			debugWriteCnt <= debugWriteCnt + 1;
 		endrule
 	end //for each eng_port
@@ -474,7 +484,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//Handle acks from controller
 	FIFO#(Tuple2#(TagT, StatusT)) ackQ <- mkFIFO;
 	rule handleControllerAck;
-		let ackStatus <- flashCtrl.user.ackStatus();
+		let ackStatus <- hostFlashCtrlUser.ackStatus();
 		ackQ.enq(ackStatus);
 	endrule
 

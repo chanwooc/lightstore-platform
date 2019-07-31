@@ -54,7 +54,7 @@ interface MainIfc;
 endinterface
 
 module mkMain#(Clock derivedClock, Reset derivedReset, KtIndication indication)(MainIfc);
-	MergeKeytable merger <- mkMergeKeytable;
+	KeytableMerger merger <- mkKeytableMerger;
 
 	Vector#(NumReadClients, MemReadEngine#(DataBusWidth, DataBusWidth, 12, 2)) re <- replicateM(mkMemReadEngine);
 	Vector#(NumWriteClients, MemWriteEngine#(DataBusWidth, DataBusWidth,  1, 2)) we <- replicateM(mkMemWriteEngine); // TODO: more servers
