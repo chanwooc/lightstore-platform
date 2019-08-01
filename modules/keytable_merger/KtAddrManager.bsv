@@ -105,10 +105,10 @@ module mkKtAddrManager #(
 				Bit#(8) numValidElem = zeroExtend(tpl_2(dmaPPAReqToResp.first)); // 0-31, and 0 encodes "32"
 				if (numValidElem == 0) numValidElem=32;
 
-				if ( ((ppaRespBeat+1)<<2) <= numValidElem ) begin
+				if ( ((ppaRespBeat+1)<<2) < numValidElem ) begin
 					ppaList4Elem.enq(tuple2(2'b0, d.data));
 				end
-				else if ( (ppaRespBeat<<2) <= numValidElem ) begin
+				else if ( (ppaRespBeat<<2) < numValidElem ) begin
 					Bit#(8) remainElem = numValidElem - ( ppaRespBeat<<2 );
 					ppaList4Elem.enq(tuple2(truncate(remainElem), d.data));
 				end

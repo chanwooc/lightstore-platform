@@ -74,7 +74,6 @@ interface KeytableMerger;
 	method Action enqHighLevelKt(Bit#(WordSz) beat);
 	method Action enqLowLevelKt(Bit#(WordSz) beat);
 
-	// method MergerStatus mergerStatus();
 	method ActionValue#(Tuple2#(Bool,Bit#(WordSz))) getMergedKt();
 	method ActionValue#(Bit#(32)) getCollectedAddr();
 endinterface
