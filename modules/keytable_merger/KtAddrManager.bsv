@@ -54,7 +54,7 @@ module mkKtAddrManager #(
 
 	// [0]: High Level, [1]: Low Level, [2]: Merged result
 	Vector#(3, FIFOF#(Bit#(32))) genPPAReq <- replicateM(mkFIFOF);
-	Vector#(3, FIFOF#(Bit#(32))) ppaList <- replicateM(mkSizedFIFOF(32)); 
+	Vector#(3, FIFOF#(Bit#(32))) ppaList <- replicateM(mkSizedFIFOF(32));
 
 	for (Integer i=0; i<3; i=i+1) begin
 		Reg#(Bit#(32)) ppaReqSent <- mkReg(0);
@@ -88,7 +88,7 @@ module mkKtAddrManager #(
 
 		// Bit#(2) to indicate # of valid elements in a word (max 4)
 		// 4 is encoded 0 instead
-		FIFOF#(Tuple2#(Bit#(2),Bit#(WordSz))) ppaList4Elem <- mkSizedFIFOF(8); 
+		FIFOF#(Tuple2#(Bit#(2),Bit#(WordSz))) ppaList4Elem <- mkSizedFIFOF(32); 
 		Reg#(Bit#(8)) ppaRespBeat <- mkReg(0);
 		rule collectPPAResp;
 			let d <- toGet(rs[i].data).get;
@@ -146,24 +146,25 @@ module mkKtAddrManager #(
 
 	Reg#(Bit#(32)) lowPPACnt <- mkReg(0);
 	Reg#(Bit#(32)) lowPPATotal <- mkReg(0);
-	method ActionValue#(Bit#(32)) getPPAHigh() if( lowPPACnt == lowPPATotal || lowPPACnt > highPPACnt || (highPPACnt-lowPPACnt) < 16 );
+
+	method ActionValue#(Bit#(32)) getPPAHigh();
 		highPPACnt <= highPPACnt + 1;
 		ppaList[0].deq;
 		return ppaList[0].first;
 	endmethod
 
-	method ActionValue#(Bit#(32)) getPPALow() if ( highPPACnt == highPPATotal || lowPPACnt < highPPACnt || (lowPPACnt-highPPACnt) < 16 ); // TODO: for testing only.. remove later
+	method ActionValue#(Bit#(32)) getPPALow();
 		lowPPACnt <= lowPPACnt + 1;
 		ppaList[1].deq;
 		return ppaList[1].first;
 	endmethod
 
-	method ActionValue#(Bit#(32)) getPPARes(); // TODO: for testing only.. remove later
+	method ActionValue#(Bit#(32)) getPPARes();
 		ppaList[2].deq;
 		return ppaList[2].first;
 	endmethod
 
-	method Action startGetPPA(Bit#(32) numKtHigh, Bit#(32) numKtLow);
+	method Action startGetPPA(Bit#(32) numKtHigh, Bit#(32) numKtLow) if (lowPPACnt==lowPPATotal && highPPACnt==highPPATotal);
 		genPPAReq[0].enq(numKtHigh);
 		genPPAReq[1].enq(numKtLow);
 		//genPPAReq[2].enq(numKtHigh+numKtLow); // ppa to write back merged KT
