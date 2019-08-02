@@ -8,6 +8,7 @@ import ClientServer::*;
 import Connectable::*;
 
 import Vector::*;
+import BuildVector::*;
 import List::*;
 
 import ConnectalMemory::*;
@@ -49,8 +50,9 @@ interface FlashRequest;
 	method Action setDmaReadRef(Bit#(32) sgId);
 	method Action setDmaWriteRef(Bit#(32) sgId);
 
-	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow); // TODO: test
-	method Action startPpa(Bit#(32) cntHigh, Bit#(32) cntLow);
+	method Action startCompaction(Bit#(32) cntHigh, Bit#(32) cntLow);
+	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
+	method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
 
 	method Action start(Bit#(32) dummy);
 	method Action debugDumpReq(Bit#(32) dummy);
@@ -58,12 +60,17 @@ interface FlashRequest;
 endinterface
 
 interface FlashIndication;
-	method Action ppaEchoHigh(Bit#(32) ppa); // TODO: test..
-	method Action ppaEchoLow(Bit#(32) ppa); // TODO: test..
+	method Action mergeDone(Bit#(32) numGenKt, Bit#(64) counter);
 	method Action readDone(Bit#(32) tag);
 	method Action writeDone(Bit#(32) tag);
 	method Action eraseDone(Bit#(32) tag, Bit#(32) status);
 	method Action debugDumpResp(Bit#(32) debug0, Bit#(32) debug1, Bit#(32) debug2, Bit#(32) debug3, Bit#(32) debug4, Bit#(32) debug5);
+
+// FIXME: indications for testing
+//	method Action ppaEchoHigh(Bit#(32) ppa);
+//	method Action ppaEchoLow(Bit#(32) ppa);
+//	method Action pageReadIssued(Bit#(32) ppa, Bit#(32) bus, Bit#(32) chip, Bit#(32) block, Bit#(32) page);
+//	method Action pageConsumed(Bit#(32) lvl, Bit#(32) cnt, Bit#(32) remKtHigh, Bit#(32) remKtLow, Bit#(32) oriNumKtHigh, Bit#(32) oriNumKtLow );
 endinterface
 
 typedef 128 DmaBurstBytes; 
@@ -182,21 +189,35 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Reg#(Bit#(32)) debugWriteCnt <- mkReg(0);
 
 	//--------------------------------------------
-	// TODO: PPA request test
+	// LightStore Compaction Accelerator
 	//--------------------------------------------
-	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(re[2].readServers, we[4].writeServers);
+	Vector#(4, MemWriteEngineServer#(DataBusWidth)) wsMerger;
+	wsMerger = vec(we[4].writeServers[0], we[5].writeServers[0], we[4].writeServers[1], we[5].writeServers[1]);
 
-	// TODO: Tests to be removed
-	rule indPPAHigh;
-		let d <- ktMergeManager.getPPAHigh;
-		indication.ppaEchoHigh(d);
-	endrule
-	rule indPPALow;
-		let d <- ktMergeManager.getPPALow;
-		indication.ppaEchoLow(d);
+	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(re[2].readServers, wsMerger, flashKtReader.flashReadServers);
+
+	rule mergeDone;
+		let {numKt, counter} <- ktMergeManager.mergeDone;
+		indication.mergeDone(numKt, counter);
 	endrule
 
-
+// FIXME: testing only rules & indications
+//	rule flashReadGen;
+//		let {ppa, bus, chip, block, page} <- ktMergeManager.pageReadIssued;
+//		indication.pageReadIssued(ppa, bus, chip, block, page);
+//	endrule
+//	rule pageConsumedGen;
+//		let d <- ktMergeManager.pageConsumed;
+//		indication.pageConsumed(zeroExtend(tpl_1(d)), tpl_2(d), tpl_3(d), tpl_4(d), tpl_5(d), tpl_6(d));
+//	endrule
+//	rule indPPAHigh;
+//		let d <- ktMergeManager.getPPAHigh;
+//		indication.ppaEchoHigh(d);
+//	endrule
+//	rule indPPALow;
+//		let d <- ktMergeManager.getPPALow;
+//		indication.ppaEchoLow(d);
+//	endrule
 
 	//--------------------------------------------
 	// Reads from Flash (DMA Write)
@@ -470,7 +491,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		let gearboxRecCnt = tpl_2(debugCnts);   
 		let auroraSendCntCC = tpl_3(debugCnts);     
 		let auroraRecCntCC = tpl_4(debugCnts);  
-		indication.debugDumpResp(gearboxSendCnt, gearboxRecCnt, auroraSendCntCC, auroraRecCntCC, debugReadCnt, debugWriteCnt);
+		//indication.debugDumpResp(gearboxSendCnt, gearboxRecCnt, auroraSendCntCC, auroraRecCntCC, debugReadCnt, debugWriteCnt);
+		indication.debugDumpResp(gearboxSendCnt, gearboxRecCnt, auroraSendCntCC, auroraRecCntCC, flashSwitch.readCnt, flashSwitch.writeCnt);
 	endrule
 	
 	Vector#(NumWriteClients, MemWriteClient#(DataBusWidth)) dmaWriteClientVec; // = vec(we.dmaClient); 
@@ -538,11 +560,15 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 			dmaWriteSgid <= sgId;
 		endmethod
 
-		method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow);
-			ktMergeManager.setDmaKtPPARef(sgIdHigh, sgIdLow, 0);
+		// Compaction related
+		method Action startCompaction(Bit#(32) cntHigh, Bit#(32) cntLow);
+			ktMergeManager.startCompaction(cntHigh, cntLow);
 		endmethod
-		method Action startPpa(Bit#(32) cntHigh, Bit#(32) cntLow);
-			ktMergeManager.startGetPPA(cntHigh, cntLow);
+		method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
+			ktMergeManager.setDmaKtPPARef(sgIdHigh, sgIdLow, sgIdRes);
+		endmethod
+		method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
+			ktMergeManager.setDmaKtOutputRef(sgIdKtBuf, sgIdInvalPPA);
 		endmethod
 
 		method Action start(Bit#(32) dummy);

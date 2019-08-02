@@ -17,8 +17,8 @@
 #include "FlashRequest.h"
 
 // Test Definitions
-//#define TEST_ERASE_ALL		 // eraseAll.exe's only test
-//#define TEST_MINI_FUNCTION
+// #define TEST_ERASE_ALL		 // eraseAll.exe's only test
+// #define TEST_MINI_FUNCTION
 #define TEST_READ_SPEED
 
 #define DEFAULT_VERBOSE_REQ  false
@@ -137,26 +137,41 @@ bool checkReadData(int tag) {
 	return pass;
 }
 
+int num_merged=-1;
+
 class FlashIndication: public FlashIndicationWrapper {
 	public:
 		FlashIndication(unsigned int id) : FlashIndicationWrapper(id){}
-
-//		virtual void dmaTestDone(unsigned int tag) {
-//			fprintf(stderr, "DMA SideBand Test Done\n" );
+// FIXME: indications for testing
+//		virtual void ppaEchoHigh(unsigned int ppa) {
+//			fprintf(stderr, "ppaHigh: %u\n", ppa);
+//			fflush(stderr);
+//			pthread_mutex_lock(&flashReqMutex);
+//			testAckCount = testAckCount+1;
+//			pthread_mutex_unlock(&flashReqMutex);
 //		}
-		virtual void ppaEchoHigh(unsigned int ppa) {
-			fprintf(stderr, "ppaHigh: %u\n", ppa);
-			fflush(stderr);
-			pthread_mutex_lock(&flashReqMutex);
-			testAckCount = testAckCount+1;
-			pthread_mutex_unlock(&flashReqMutex);
-		}
+//		virtual void ppaEchoLow(unsigned int ppa) {
+//			fprintf(stderr, "ppaLow: %u\n", ppa);
+//			fflush(stderr);
+//			pthread_mutex_lock(&flashReqMutex);
+//			testAckCount = testAckCount+1;
+//			pthread_mutex_unlock(&flashReqMutex);
+//		}
+//		virtual void pageReadIssued(unsigned int ppa, unsigned int bus, unsigned int chip, unsigned int block, unsigned int page) {
+//			fprintf(stderr, "pageReadIssued: %u %u %u %u %u \n", ppa, bus, chip, block, page);
+//			fflush(stderr);
+//		}
+//		virtual void pageConsumed(unsigned int lvl, unsigned int cnt,
+//			unsigned int a, unsigned int b, unsigned int c, unsigned int d) {
+//			fprintf(stderr, "pageConsumed: Level(%u) PageCnt(%u) Merger(%u %u %u %u)\n", lvl, cnt, a, b, c, d);
+//			fflush(stderr);
+//		}
 
-		virtual void ppaEchoLow(unsigned int ppa) {
-			fprintf(stderr, "ppaLow: %u\n", ppa);
+		virtual void mergeDone(unsigned int numMergedKt, uint64_t counter) {
+			fprintf(stderr, "mergeDone: %u %" PRIu64 "\n", numMergedKt, counter);
 			fflush(stderr);
 			pthread_mutex_lock(&flashReqMutex);
-			testAckCount = testAckCount+1;
+			num_merged = (int)numMergedKt;
 			pthread_mutex_unlock(&flashReqMutex);
 		}
 
@@ -572,9 +587,9 @@ int main(int argc, const char **argv)
 
 		int repeat = 1;
 		int blkStart = 0;
-		int blkCnt = 256;
+		int blkCnt = 128;
 		int pageStart = 0;
-		int pageCnt = 32;
+		int pageCnt = 16;
 
 		timespec start, now;
 		clock_gettime(CLOCK_REALTIME, &start);
@@ -589,9 +604,6 @@ int main(int argc, const char **argv)
 	}
 #endif
 
-#if 0
-#endif
-
 	if (testPassed==true) {
 		fprintf(stderr, "LOG: TEST PASSED!\n");
 	}
@@ -600,55 +612,124 @@ int main(int argc, const char **argv)
 	}
 
 
-	fprintf(stderr, "PPA Test\n");
+#if 0
+#endif
+
+	fprintf(stderr, "Kt Merge Test\n");
 	int highPpaAlloc = portalAlloc(4*1024*200, 0);
 	int lowPpaAlloc = portalAlloc(4*1024*200, 0);
+	int resPpaAlloc = portalAlloc(4*1024*200, 0);
 	unsigned int* highPpaBuf = (unsigned int*)portalMmap(highPpaAlloc, 4*1024*200);
 	unsigned int* lowPpaBuf = (unsigned int*)portalMmap(lowPpaAlloc, 4*1024*200);
+	unsigned int* resPpaBuf = (unsigned int*)portalMmap(resPpaAlloc, 4*1024*200);
 
 	fprintf(stderr, "highPpaAlloc = %x\n", highPpaAlloc); 
 	fprintf(stderr, "lowPpaAlloc = %x\n", lowPpaAlloc); 
+	fprintf(stderr, "resPpaAlloc = %x\n", resPpaAlloc); 
 	portalCacheFlush(highPpaAlloc, highPpaBuf, 4*1024*200, 1);
 	portalCacheFlush(lowPpaAlloc, lowPpaBuf, 4*1024*200, 1);
+	portalCacheFlush(resPpaAlloc, resPpaBuf, 4*1024*200, 1);
 	unsigned int ref_highPpaAlloc = dma->reference(highPpaAlloc);
 	unsigned int ref_lowPpaAlloc = dma->reference(lowPpaAlloc);
-	device->setDmaKtPPARef(ref_highPpaAlloc, ref_lowPpaAlloc);
+	unsigned int ref_resPpaAlloc = dma->reference(resPpaAlloc);
+	device->setDmaKtPPARef(ref_highPpaAlloc, ref_lowPpaAlloc, ref_resPpaAlloc);
+	fprintf(stderr, "Done setting up PPA DMA\n");
 
-	unsigned int numTableHigh=5217;
-	for (unsigned int t=0; t < numTableHigh; t++) {
-		highPpaBuf[t] = t+1;
-	}
+	int mergedKtAlloc = portalAlloc(8192*10000, 0);
+	int invalPpaAlloc = portalAlloc(4*1024*200, 0);
+	unsigned int* mergedKtBuf = (unsigned int*)portalMmap(mergedKtAlloc, 8192*10000);
+	unsigned int* invalPpaBuf = (unsigned int*)portalMmap(invalPpaAlloc, 4*1024*200);
+	fprintf(stderr, "mergedKtAlloc = %x\n", mergedKtAlloc); 
+	fprintf(stderr, "invalPpaAlloc = %x\n", invalPpaAlloc); 
+	portalCacheFlush(mergedKtAlloc, mergedKtBuf, 8192*10000, 1);
+	portalCacheFlush(invalPpaAlloc, invalPpaBuf, 4*1024*200, 1);
+	unsigned int ref_mergedKtAlloc = dma->reference(mergedKtAlloc);
+	unsigned int ref_invalPpaAlloc = dma->reference(invalPpaAlloc);
+	device->setDmaKtOutputRef(ref_mergedKtAlloc, ref_invalPpaAlloc);
+	fprintf(stderr, "Done setting up Merged Keytable DMA\n");
 
-	unsigned int numTableLow=517;
-	for (unsigned int t=0; t < numTableLow; t++) {
-		lowPpaBuf[t] = numTableLow-t;
-	}
+	// set up LPA
+	//const char* pathH[] = {"uniq32/h_level.bin", "invalidate/h_level.bin", "100_1000/h_level.bin"};
+	//const char* pathL[] = {"uniq32/l_level.bin", "invalidate/l_level.bin", "100_1000/l_level.bin"};
+	
+	const char* pathMerged[] = {"uniq32_hw.bin", "invalidate_hw.bin", "100_1000_hw.bin"};
 
-	fprintf(stderr, "Start PPA: %u %u\n", numTableHigh, numTableLow); 
-	device->startPpa(numTableHigh, numTableLow);
+	//const int startPpaH[] = {0, 100, 300};
+	//const int startPpaL[] = {1, 200, 400};
+	const int startPpaH[] = {2001, 2101, 2301};
+	const int startPpaL[] = {2002, 2201, 2401};
 
-	int elapsed = 10000;
-	while (true) {
-		usleep(100);
-		if (elapsed == 0) {
-			elapsed=10000;
-			device->debugDumpReq(0);
+	const int numPpaH[] = {1, 41, 100};
+	const int numPpaL[] = {1, 88, 1000};
+
+	for (int i = 0; i < 3; i++){
+		unsigned int numTableHigh=numPpaH[i];
+		num_merged = -1;
+		for (unsigned int t=0; t < numTableHigh; t++) {
+			highPpaBuf[t] = startPpaH[i]+t;
 		}
-		else {
-			elapsed--;
+
+		unsigned int numTableLow=numPpaL[i];
+		for (unsigned int t=0; t < numTableLow; t++) {
+			lowPpaBuf[t] = startPpaL[i]+t;
 		}
-		if ( getTestAckCount() == (int)(numTableHigh+numTableLow) ) break;
+
+		// start Test
+		fprintf(stderr, "Start PPA: %u %u\n", numTableHigh, numTableLow); 
+		device->startCompaction(numTableHigh, numTableLow);
+
+		fflush(stderr);
+		device->debugDumpReq(0);   // echo-back debug message
+
+		int elapsed = 10000;
+		while (true) {
+			usleep(100);
+			if (elapsed == 0) {
+				elapsed=10000;
+				device->debugDumpReq(0);
+			}
+			else {
+				elapsed--;
+			}
+			if ( num_merged != -1 ) break;
+		}
+		device->debugDumpReq(0);
+		device->debugDumpReq(0);
+
+		// output data
+		FILE *fp = fopen(pathMerged[i], "wb");
+		if (fp == NULL) {
+			fprintf(stderr, "%s open failed\n", pathMerged[i]);
+			return -1;
+		}
+
+		if (fwrite(mergedKtBuf, (size_t)num_merged*8192, 1, fp) != 1) {
+			fprintf(stderr, "%s write failed\n", pathMerged[i]);
+			fclose(fp);
+			return -1;
+		}
+		fclose(fp);
 	}
 
 	sleep(1);
 	sleep(1);
-
-	dma->dereference(ref_highPpaAlloc);
-	portalMunmap(highPpaBuf, 4*1024*200);
+	sleep(1);
 
 	dma->dereference(ref_srcAlloc);
 	dma->dereference(ref_dstAlloc);
 	portalMunmap(srcBuffer, srcAlloc_sz);
 	portalMunmap(dstBuffer, dstAlloc_sz);
+
+	dma->dereference(ref_highPpaAlloc);
+	dma->dereference(ref_lowPpaAlloc);
+	dma->dereference(ref_resPpaAlloc);
+	dma->dereference(ref_mergedKtAlloc);
+	dma->dereference(ref_invalPpaAlloc);
+	portalMunmap(highPpaBuf, 4*1024*200);
+	portalMunmap(lowPpaBuf, 4*1024*200);
+	portalMunmap(resPpaBuf, 4*1024*200);
+	portalMunmap(mergedKtBuf, 8192*10000);
+	portalMunmap(invalPpaBuf, 4*1024*200);
+
 	fprintf(stderr, "Done releasing DMA!\n");
 }
