@@ -17,7 +17,7 @@ module mkTest(Empty);
 
 	BRAM1Port#(Bit#(32), Bit#(128)) highLvlBram <- mkBRAM1Server(highLvlBufCfg);
 
-	MergeKeytable merger <- mkMergeKeytable;
+	KeytableMerger merger <- mkKeytableMerger;
 
 	Reg#(Bit#(32)) cnt <- mkReg(0);
 
@@ -35,6 +35,9 @@ module mkTest(Empty);
 	rule l_generateReq (lowGenAddrReg < fromInteger(512*lowLvlKT));
 		lowGenAddrReg <= lowGenAddrReg + 1;
 		lowLvlBram.portA.request.put( BRAMRequest{ write: False, responseOnWrite: False, address: (lowGenAddrReg), datain: ?} );
+
+		//if (lowGenAddrReg[8:0]==511)
+		//	$display("Low page %d", lowGenAddrReg>>9);
 	endrule
 
 	Reg#(Bit#(32)) highGenAddrReg <- mkReg(0);
@@ -42,6 +45,9 @@ module mkTest(Empty);
 	rule h_generateReq (highGenAddrReg < fromInteger(512*highLvlKT));
 		highGenAddrReg <= highGenAddrReg + 1;
 		highLvlBram.portA.request.put( BRAMRequest{ write: False, responseOnWrite: False, address: (highGenAddrReg), datain: ?} );
+
+		//if (highGenAddrReg[8:0]==511)
+		//	$display("High page %d", highGenAddrReg>>9);
 	endrule
 
 	rule h_push;
