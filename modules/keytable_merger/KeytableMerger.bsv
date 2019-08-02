@@ -35,6 +35,18 @@ Integer keytableWords = valueOf(KeytableWords); // = 512
 Integer ktHeaderWords = valueOf(KtHeaderWords); // = 64
 Integer ktHeaderElems = valueOf(KtHeaderElems); // = 512
 
+interface KeytableMerger;
+	method Action runMerge(Bit#(32) numHighLvlKt, Bit#(32) numLowLvlKt);
+
+	method Action enqHighLevelKt(Bit#(WordSz) beat);
+	method Action enqLowLevelKt(Bit#(WordSz) beat);
+
+	method ActionValue#(Tuple2#(Bool,Bit#(WordSz))) getMergedKt();
+	method ActionValue#(Bit#(32)) getCollectedAddr();
+
+	method Tuple4#(Bit#(32), Bit#(32), Bit#(32), Bit#(32)) mergerDebug();
+endinterface
+
 typedef enum { GT, LT, EQ } CompResult deriving (Bits, Eq);
 
 function CompResult compareByteString1(Bit#(96) a, Bit#(96) b);
@@ -63,20 +75,6 @@ endfunction
 
 typedef enum { DECISION, HIGH_FLUSH, LOW_FLUSH } MStatus deriving (Bits, Eq);
 
-typedef enum {
-	READY,    // need to set the number of both Kts
-	OPERATING
-} MergerStatus deriving (Bits, Eq);
-
-interface KeytableMerger;
-	method Action runMerge(Bit#(32) numHighLvlKt, Bit#(32) numLowLvlKt);
-
-	method Action enqHighLevelKt(Bit#(WordSz) beat);
-	method Action enqLowLevelKt(Bit#(WordSz) beat);
-
-	method ActionValue#(Tuple2#(Bool,Bit#(WordSz))) getMergedKt();
-	method ActionValue#(Bit#(32)) getCollectedAddr();
-endinterface
 
 (* synthesize *)
 module mkKeytableMerger (KeytableMerger ifc);
@@ -597,9 +595,6 @@ module mkKeytableMerger (KeytableMerger ifc);
 		keytableIn[1].enq(beat);
 	endmethod
 
-//	method MergerStatus mergerStatus();
-//	endmethod
-
 	method ActionValue#(Tuple2#(Bool,Bit#(WordSz))) getMergedKt();
 		createdKtStream.deq;
 		return createdKtStream.first;
@@ -607,5 +602,10 @@ module mkKeytableMerger (KeytableMerger ifc);
 	method ActionValue#(Bit#(32)) getCollectedAddr();
 		collectedAddrQ.deq;
 		return collectedAddrQ.first;
+	endmethod
+
+	// Debug info: High level remaning table, low level table, Original High/low table #
+	method Tuple4#(Bit#(32), Bit#(32), Bit#(32), Bit#(32)) mergerDebug();
+		return tuple4(numKeytable[0], numKeytable[1], numKeytableOrig[0], numKeytableOrig[1]);
 	endmethod
 endmodule
