@@ -573,17 +573,19 @@ int main(int argc, const char **argv)
 	}
 #endif
 
-const char* pathH[] = {"uniq32/h_level.bin", "invalidate/h_level.bin", "100_1000/h_level.bin"};
-const char* pathL[] = {"uniq32/l_level.bin", "invalidate/l_level.bin", "100_1000/l_level.bin"};
 
-const int startPpaH[] = {0, 100, 300};
-const int startPpaL[] = {1, 200, 400};
-
-const int numPpaH[] = {1, 41, 100};
-const int numPpaL[] = {1, 88, 1000};
-
-#if KT_WRITE
+#if defined(KT_WRITE)
 	{
+		const char* pathH[] = {"uniq32/h_level.bin", "invalidate/h_level.bin", "100_1000/h_level.bin"};
+		const char* pathL[] = {"uniq32/l_level.bin", "invalidate/l_level.bin", "100_1000/l_level.bin"};
+
+		const int startPpaH[] = {0, 100, 300};
+		const int startPpaL[] = {1, 200, 400};
+		//const int startPpaH[] = {2001, 2101, 2301};
+		//const int startPpaL[] = {2002, 2201, 2401};
+
+		const int numPpaH[] = {1, 41, 100};
+		const int numPpaL[] = {1, 88, 1000};
 		for (int ii=0; ii<3; ii++){
 			FILE *h_fp = fopen(pathH[ii], "rb");
 			FILE *l_fp = fopen(pathL[ii], "rb");
@@ -671,9 +673,20 @@ const int numPpaL[] = {1, 88, 1000};
 	}
 #endif
 
-#if KT_READ
+#if defined(KT_READ)
 	{
-		for (int ii=0; ii<3; ii++){
+		const char* pathH[] = {"uniq32/h_level.bin", "invalidate/h_level.bin", "100_1000/h_level.bin"};
+		const char* pathL[] = {"uniq32/l_level.bin", "invalidate/l_level.bin", "100_1000/l_level.bin"};
+
+		const int startPpaH[] = {0, 100, 300};
+		const int startPpaL[] = {1, 200, 400};
+		//const int startPpaH[] = {2001, 2101, 2301};
+		//const int startPpaL[] = {2002, 2201, 2401};
+
+		const int numPpaH[] = {1, 41, 100};
+		const int numPpaL[] = {1, 88, 1000};
+
+		for (int ii=0; ii<1; ii++){
 			FILE *h_fp = fopen(pathH[ii], "rb");
 			FILE *l_fp = fopen(pathL[ii], "rb");
 
@@ -732,6 +745,7 @@ const int numPpaL[] = {1, 88, 1000};
 					usleep(100);
 					if ( getNumReadsInFlight() == 0 ) break;
 				}
+				device->debugDumpReq(0);
 
 				if (memcmp(tmpbuf, readBuffers[freeTag], 8192) != 0) {
 					fprintf(stderr, "h_level.bin read different %d %d\n", ii, ppa);
@@ -761,6 +775,7 @@ const int numPpaL[] = {1, 88, 1000};
 					usleep(100);
 					if ( getNumReadsInFlight() == 0 ) break;
 				}
+				device->debugDumpReq(0);
 
 				if (memcmp(tmpbuf, readBuffers[freeTag], 8192) != 0) {
 					fprintf(stderr, "l_level.bin read different %d %d\n", ii, ppa);
@@ -773,6 +788,7 @@ const int numPpaL[] = {1, 88, 1000};
 	}
 #endif
 
+	sleep(1);
 	if (testPassed==true) {
 		fprintf(stderr, "LOG: TEST PASSED!\n");
 	}
@@ -780,9 +796,11 @@ const int numPpaL[] = {1, 88, 1000};
 		fprintf(stderr, "LOG: **ERROR: TEST FAILED!\n");
 	}
 
+	sleep(1);
 	dma->dereference(ref_srcAlloc);
 	dma->dereference(ref_dstAlloc);
 	portalMunmap(srcBuffer, srcAlloc_sz);
 	portalMunmap(dstBuffer, dstAlloc_sz);
 	fprintf(stderr, "Done releasing DMA!\n");
+	sleep(1);
 }
