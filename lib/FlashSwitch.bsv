@@ -11,6 +11,8 @@ import FlashCtrlZcu::*;
 interface FlashSwitch#(numeric type n);
 	interface Vector#(n, FlashCtrlUser) users; // FlashReadMux will use some user ports (8224B IO)
 	interface FlashCtrlClient flashCtrlClient; // talk to the controller
+	method Bit#(32) readCnt;
+	method Bit#(32) writeCnt;
 endinterface
 
 function FlashCtrlClient extractFlashCtrlClient(FlashSwitch#(n) a);
@@ -31,6 +33,8 @@ Bool verbose = False;
 module mkFlashSwitch(FlashSwitch#(n)) provisos(
 	Alias#(Bit#(TLog#(n)), channelT)
 	);
+	Reg#(Bit#(32)) readBeatCnt <- mkReg(0);
+	Reg#(Bit#(32)) writeBeatCnt <- mkReg(0);
 
 	RenameTable#(128, Tuple3#(TagT, channelT, BusT)) reqRenameTb <- mkRenameTable;
 	Vector#(n, RegFile#(TagT, TagT)) tagRenames <- replicateM(mkRegFileFull);
@@ -53,7 +57,7 @@ module mkFlashSwitch(FlashSwitch#(n)) provisos(
 		if ( beatCnts[busId] == fromInteger(beatsPerPage - 1) ) begin
 			beatCnts[busId] <= 0;
 			reqRenameTb.invalidEntry(reTag);
-			$display("(%m) distReadWord, one page read finished");
+			$display("(%m) distReadWord, one page read finished (beat=%d)", beatCnts[busId]);
 		end
 		else begin
 			beatCnts[busId] <= beatCnts[busId] + 1;
@@ -67,7 +71,7 @@ module mkFlashSwitch(FlashSwitch#(n)) provisos(
 		writeReqQs[channel].enq(orTag);
 	endrule
 
-	Vector#(n, FIFO#(Tuple2#(TagT, StatusT))) ackStatusQs <- replicateM(mkFIFO);	 
+	Vector#(n, FIFO#(Tuple2#(TagT, StatusT))) ackStatusQs <- replicateM(mkFIFO);
 	rule distAckStatus if ( flashRespQ.first matches tagged AckStatus .rsp);
 		flashRespQ.deq;
 		let {orTag, channel, busId} <- reqRenameTb.readResp;
@@ -86,7 +90,7 @@ module mkFlashSwitch(FlashSwitch#(n)) provisos(
 						tagRenames[i].upd(orTag, reTag);
 					endmethod
 					//TODO:: it might probably need a burst lock
-					method Action writeWord(Tuple2#(Bit#(128), TagT) taggedData); 
+					method Action writeWord(Tuple2#(Bit#(128), TagT) taggedData);
 						let {d, orTag} = taggedData;
 						let reTag = tagRenames[i].sub(orTag);
 						writeWordQ.enq(tuple2(d, reTag));
@@ -114,10 +118,12 @@ module mkFlashSwitch(FlashSwitch#(n)) provisos(
 			return v;
 		endmethod
 		method ActionValue#(Tuple2#(Bit#(128), TagT)) writeWord;
+			writeBeatCnt <= writeBeatCnt + 1;
 			let v <- toGet(writeWordQ).get;
 			return v;
 		endmethod
 		method Action readWord (Tuple2#(Bit#(128), TagT) taggedData); 
+			readBeatCnt <= readBeatCnt + 1;
 			reqRenameTb.readEntry(tpl_2(taggedData));
 			flashRespQ.enq(tagged ReadWord taggedData);
 		endmethod
@@ -130,4 +136,6 @@ module mkFlashSwitch(FlashSwitch#(n)) provisos(
 			flashRespQ.enq(tagged AckStatus taggedStatus);
 		endmethod
 	endinterface
+	method Bit#(32) readCnt = readBeatCnt;
+	method Bit#(32) writeCnt = writeBeatCnt;
 endmodule
