@@ -40,7 +40,7 @@ interface KtAddrManager;
 endinterface
 
 module mkKtAddrManager #(
-	Vector#(4, MemReadEngineServer#(DataBusWidth)) rs
+	Vector#(3, MemReadEngineServer#(DataBusWidth)) rs
 ) (KtAddrManager);
 	// DMA SgId for Flash Addresses (High KT, Low KT) and destination KT Flash Addresses
 	// [0]: High Level, [1]: Low Level, [2]: Merged result

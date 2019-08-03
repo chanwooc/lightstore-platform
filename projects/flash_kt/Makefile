@@ -16,7 +16,7 @@ AUTOTOP=--interface pins:Main.pins
 NUMBER_OF_MASTERS=2
 PLATFORM_NUMBER_OF_MASTERS=2
 NUMBER_OF_RENGINES=3 # Flash Write (DMA Read)
-NUMBER_OF_WENGINES=6 # Flash Read  (DMA Write)
+NUMBER_OF_WENGINES=9 # Flash Read  (DMA Write)
 #BURST_LEN_SIZE=13    # Each flash page = 8KB
 
 NUM_RENGINE_FLASH=2 # Flash Write (DMA Read)

@@ -124,44 +124,68 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		FlashCtrlZcuIfc flashCtrl <- mkFlashCtrlZcu(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock);
 	`endif
 
-	FlashSwitch#(2) flashSwitch <- mkFlashSwitch; // users[1] for normal IO & users[0,2] for kt-merging
+	FlashSwitch#(3) flashSwitch <- mkFlashSwitch; // users[1] for normal IO & users[0,2] for kt-merging
 	mkConnection(flashSwitch.flashCtrlClient, flashCtrl.user);
 
 	FlashCtrlUser hostFlashCtrlUser = flashSwitch.users[1];
+	FlashCtrlUser ktWriteUser = flashSwitch.users[2];
 
 	FlashReadMultiplex#(2, 1) flashKtReader <- mkFlashReadMultiplex;
 	mkConnection(flashKtReader.flashClient[0], flashSwitch.users[0]);
 
 	//--------------------------------------------
-	// DMA Module Instantiation
+	// LightStore Compaction Accelerator
 	//--------------------------------------------
-	Vector#(NumReadClients, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TDiv#(NUM_ENG_PORTS, `NumReFlash))) re <- replicateM(mkMemReadEngine);
-	Vector#(NumWriteClients, MemWriteEngine#(DataBusWidth, DataBusWidth,  1, TDiv#(NUM_ENG_PORTS,`NumWeFlash))) we <- replicateM(mkMemWriteEngine);
+	Vector#(TSub#(NumReadClients,`NumReFlash), MemReadEngine#(DataBusWidth, DataBusWidth, 8, 3)) mergeRe <- replicateM(mkMemReadEngine);
+	Vector#(TSub#(NumWriteClients, `NumWeFlash), MemWriteEngine#(DataBusWidth, DataBusWidth,  1, 1)) mergeWe <- replicateM(mkMemWriteEngine);
 
-	function MemReadEngineServer#(DataBusWidth) getREServer( Vector#(NumReadClients, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TDiv#(NUM_ENG_PORTS, `NumReFlash))) rengine, Integer idx ) ;
-		//let numEngineServer = valueOf(TDiv#(NUM_ENG_PORTS,NumReadClients));
-		//let idxEngine = idx / numEngineServer;
-		//let idxServer = idx % numEngineServer;
+	Vector#(5, MemWriteEngineServer#(DataBusWidth)) wsMerger;
+	wsMerger = vec(mergeWe[0].writeServers[0], mergeWe[1].writeServers[0], mergeWe[2].writeServers[0], mergeWe[3].writeServers[0], mergeWe[4].writeServers[0]);
 
-		//let idxEngine = idx % valueOf(NumReadClients);
-		//let idxServer = idx / valueOf(NumReadClients);
+	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(mergeRe[0].readServers, wsMerger, flashKtReader.flashReadServers);
+
+	rule mergeDone;
+		let {numKt, counter} <- ktMergeManager.mergeDone;
+		indication.mergeDone(numKt, counter);
+	endrule
+
+// FIXME: testing only rules & indications
+//	rule flashReadGen;
+//		let {ppa, bus, chip, block, page} <- ktMergeManager.pageReadIssued;
+//		indication.pageReadIssued(ppa, bus, chip, block, page);
+//	endrule
+//	rule pageConsumedGen;
+//		let d <- ktMergeManager.pageConsumed;
+//		indication.pageConsumed(zeroExtend(tpl_1(d)), tpl_2(d), tpl_3(d), tpl_4(d), tpl_5(d), tpl_6(d));
+//	endrule
+//	rule indPPAHigh;
+//		let d <- ktMergeManager.getPPAHigh;
+//		indication.ppaEchoHigh(d);
+//	endrule
+//	rule indPPALow;
+//		let d <- ktMergeManager.getPPALow;
+//		indication.ppaEchoLow(d);
+//	endrule
+
+
+	//--------------------------------------------
+	// Flash DMA Module Instantiation
+	//--------------------------------------------
+	Vector#(`NumReFlash, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TDiv#(NUM_ENG_PORTS, `NumReFlash))) re <- replicateM(mkMemReadEngine);
+	Vector#(`NumWeFlash, MemWriteEngine#(DataBusWidth, DataBusWidth,  1, TDiv#(NUM_ENG_PORTS,`NumWeFlash))) we <- replicateM(mkMemWriteEngine);
+
+	function MemReadEngineServer#(DataBusWidth) getREServer( Vector#(`NumReFlash, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TDiv#(NUM_ENG_PORTS, `NumReFlash))) rengine, Integer idx ) ;
 		let idxEngine = idx % (`NumReFlash);
 		let idxServer = idx / (`NumReFlash);
 
 		return rengine[idxEngine].readServers[idxServer];
-		//return rengine[idx].readServers[0];
 	endfunction
 	
-	function MemWriteEngineServer#(DataBusWidth) getWEServer( Vector#(NumWriteClients, MemWriteEngine#(DataBusWidth, DataBusWidth,  1, TDiv#(NUM_ENG_PORTS,`NumWeFlash))) wengine, Integer idx ) ;
-		//let numEngineServer = valueOf(TDiv#(NUM_ENG_PORTS,NumWriteClients));
-		//let idxEngine = idx / numEngineServer;
-		//let idxServer = idx % numEngineServer;
-
+	function MemWriteEngineServer#(DataBusWidth) getWEServer( Vector#(`NumWeFlash, MemWriteEngine#(DataBusWidth, DataBusWidth,  1, TDiv#(NUM_ENG_PORTS,`NumWeFlash))) wengine, Integer idx ) ;
 		let idxEngine = idx % (`NumWeFlash);
 		let idxServer = idx / (`NumWeFlash);
 
 		return wengine[idxEngine].writeServers[idxServer];
-		//return wengine[idx].writeServers[0];
 	endfunction
 
 	function Bit#(32) calcDmaPageOffset(TagT tag);
@@ -187,37 +211,6 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Reg#(Bit#(32)) debugFlag <- mkReg(0);
 	Reg#(Bit#(32)) debugReadCnt <- mkReg(0);
 	Reg#(Bit#(32)) debugWriteCnt <- mkReg(0);
-
-	//--------------------------------------------
-	// LightStore Compaction Accelerator
-	//--------------------------------------------
-	Vector#(4, MemWriteEngineServer#(DataBusWidth)) wsMerger;
-	wsMerger = vec(we[4].writeServers[0], we[5].writeServers[0], we[4].writeServers[1], we[5].writeServers[1]);
-
-	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(re[2].readServers, wsMerger, flashKtReader.flashReadServers);
-
-	rule mergeDone;
-		let {numKt, counter} <- ktMergeManager.mergeDone;
-		indication.mergeDone(numKt, counter);
-	endrule
-
-// FIXME: testing only rules & indications
-//	rule flashReadGen;
-//		let {ppa, bus, chip, block, page} <- ktMergeManager.pageReadIssued;
-//		indication.pageReadIssued(ppa, bus, chip, block, page);
-//	endrule
-//	rule pageConsumedGen;
-//		let d <- ktMergeManager.pageConsumed;
-//		indication.pageConsumed(zeroExtend(tpl_1(d)), tpl_2(d), tpl_3(d), tpl_4(d), tpl_5(d), tpl_6(d));
-//	endrule
-//	rule indPPAHigh;
-//		let d <- ktMergeManager.getPPAHigh;
-//		indication.ppaEchoHigh(d);
-//	endrule
-//	rule indPPALow;
-//		let d <- ktMergeManager.getPPALow;
-//		indication.ppaEchoLow(d);
-//	endrule
 
 	//--------------------------------------------
 	// Reads from Flash (DMA Write)
@@ -375,15 +368,13 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 	//Handle write data requests from controller
 
-	Reg#(BusT) dmaRBus <- mkReg(0);
-	rule handleWriteDataRequestFromFlash;
+	rule handleWriteDataRequestFromFlash1;
 		TagT tag <- hostFlashCtrlUser.writeDataReq();
 		//check which bus it's from
 		let bus = tag2busTable[tag];
-		//let bus = dmaRBus;
-		//dmaRBus <= dmaRBus + 1;
 		wrToDmaReqQ.enq(tuple2(tag, bus));
 	endrule
+
 
 	rule distrDmaReadReq;
 		wrToDmaReqQ.deq;
@@ -498,12 +489,17 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Vector#(NumWriteClients, MemWriteClient#(DataBusWidth)) dmaWriteClientVec; // = vec(we.dmaClient); 
 	Vector#(NumReadClients, MemReadClient#(DataBusWidth)) dmaReadClientVec;
 
-	for (Integer tt = 0; tt < valueOf(NumReadClients); tt=tt+1) begin
+	for (Integer tt = 0; tt < `NumWeFlash; tt=tt+1) begin
+		dmaWriteClientVec[tt] = we[tt].dmaClient;
+	end
+	for (Integer tt = `NumWeFlash; tt < valueOf(NumWriteClients); tt=tt+1) begin
+		dmaWriteClientVec[tt] = mergeWe[tt-`NumWeFlash].dmaClient;
+	end
+	for (Integer tt = 0; tt < `NumReFlash; tt=tt+1) begin
 		dmaReadClientVec[tt] = re[tt].dmaClient;
 	end
-
-	for (Integer tt = 0; tt < valueOf(NumWriteClients); tt=tt+1) begin
-		dmaWriteClientVec[tt] = we[tt].dmaClient;
+	for (Integer tt = `NumReFlash; tt < valueOf(NumReadClients); tt=tt+1) begin
+		dmaReadClientVec[tt] = mergeRe[tt-`NumReFlash].dmaClient;
 	end
 
 	interface FlashRequest request;

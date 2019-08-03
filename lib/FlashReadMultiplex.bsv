@@ -9,7 +9,7 @@ import GetPut::*;
 import FlashCtrlIfc::*;
 import ControllerTypes::*;
 
-typedef 8 ReqPerUser;
+typedef 24 ReqPerUser;
 
 interface FlashReadMultiplex#(numeric type nUsers, numeric type nSwitches);
 	// in-order request/response per channel

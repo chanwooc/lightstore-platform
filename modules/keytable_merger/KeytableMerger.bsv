@@ -4,6 +4,7 @@ import BRAMFIFO::*;
 
 import FIFO::*;
 import FIFOF::*;
+import SpecialFIFOs::*;
 
 import Vector::*;
 import BuildVector::*;
@@ -42,9 +43,10 @@ interface KeytableMerger;
 	method Action enqLowLevelKt(Bit#(WordSz) beat);
 
 	method ActionValue#(Tuple2#(Bool,Bit#(WordSz))) getMergedKt();
-	method ActionValue#(Bit#(32)) getCollectedAddr();
+	method ActionValue#(Bit#(32)) getInvalidatedAddr();
+	method Bool isInvalAddrDone();
 
-	method Tuple4#(Bit#(32), Bit#(32), Bit#(32), Bit#(32)) mergerDebug();
+	method Tuple4#(Bit#(32), Bit#(32), Bit#(32), Bit#(32)) mergerStatus();
 endinterface
 
 typedef enum { GT, LT, EQ } CompResult deriving (Bits, Eq);
@@ -101,7 +103,7 @@ module mkKeytableMerger (KeytableMerger ifc);
 
 	FIFOF#(Tuple2#(Bool, Bit#(WordSz))) createdKtStream <- mkFIFOF;
 
-	FIFOF#(Bit#(32)) collectedAddrQ <- mkFIFOF;
+	FIFOF#(Bit#(32)) collectedAddrQ <- mkFIFOF; //mkBypassFIFOF;
 
 	// Pre-processing header
 	for(Integer i=0; i<2; i=i+1) begin
@@ -143,14 +145,12 @@ module mkKeytableMerger (KeytableMerger ifc);
 				if (keytableInBeat[i] < (lastEntOffset >> 4))
 					ktEntryStream[i].enq(w);
 
-				if (keytableInBeat[i] < fromInteger(keytableWords)-1) begin
-					keytableInBeat[i] <= keytableInBeat[i] + 1;
-				end
-				else begin
+				if (keytableInBeat[i] == fromInteger(keytableWords-1)) begin
 					keytableInBeat[i] <= 0;
 					numKeytable[i] <= numKeytable[i] - 1;
 					//$display("[%d] Port%d, KT %d-th ended ", cnt, i, numKeytableOrig[i]-numKeytable[i]+1);
 				end
+				else keytableInBeat[i] <= keytableInBeat[i] + 1;
 			end
 		endrule
 
@@ -579,6 +579,15 @@ module mkKeytableMerger (KeytableMerger ifc);
 		end
 	endrule
 
+	Reg#(Bool) isAddrDoneDelay<- mkReg(False);
+	Reg#(Bool) isAddrDone <- mkReg(False);
+	rule invalAddrStatus (!isAddrDone);
+		isAddrDone <= isAddrDoneDelay;
+		if (h_signalDone || l_signalDone) begin
+			isAddrDoneDelay <= True;
+		end
+	endrule
+
 	method Action runMerge(Bit#(32) numHighLvlKt, Bit#(32) numLowLvlKt) if (numKeytable[0] == 0 && numKeytable[1] == 0);
 		numKeytable[0] <= numHighLvlKt;
 		numKeytable[1] <= numLowLvlKt;
@@ -586,6 +595,9 @@ module mkKeytableMerger (KeytableMerger ifc);
 		numKeytableOrig[1] <= numLowLvlKt;
 		keytableInBeat[0] <= 0;
 		keytableInBeat[1] <= 0;
+
+		isAddrDoneDelay <= False;
+		isAddrDone <= False;
 	endmethod
 
 	method Action enqHighLevelKt(Bit#(WordSz) beat);
@@ -599,13 +611,14 @@ module mkKeytableMerger (KeytableMerger ifc);
 		createdKtStream.deq;
 		return createdKtStream.first;
 	endmethod
-	method ActionValue#(Bit#(32)) getCollectedAddr();
+	method ActionValue#(Bit#(32)) getInvalidatedAddr();
 		collectedAddrQ.deq;
 		return collectedAddrQ.first;
 	endmethod
 
 	// Debug info: High level remaning table, low level table, Original High/low table #
-	method Tuple4#(Bit#(32), Bit#(32), Bit#(32), Bit#(32)) mergerDebug();
+	method Tuple4#(Bit#(32), Bit#(32), Bit#(32), Bit#(32)) mergerStatus();
 		return tuple4(numKeytable[0], numKeytable[1], numKeytableOrig[0], numKeytableOrig[1]);
 	endmethod
+	method Bool isInvalAddrDone() = isAddrDone;
 endmodule

@@ -48,8 +48,8 @@ interface LightStoreKtMerger;
 endinterface
 
 module mkLightStoreKtMerger #(
-	Vector#(4, MemReadEngineServer#(DataBusWidth)) rs,
-	Vector#(4, MemWriteEngineServer#(DataBusWidth)) ws,
+	Vector#(3, MemReadEngineServer#(DataBusWidth)) rs,
+	Vector#(5, MemWriteEngineServer#(DataBusWidth)) ws,
 	Vector#(2, Server#(DualFlashAddr, Bit#(128))) flashRs
 ) (LightStoreKtMerger);
 
@@ -59,6 +59,9 @@ module mkLightStoreKtMerger #(
 	Reg#(Bit#(32)) mergedKtBufSgid <- mkReg(0);
 	Reg#(Bit#(32)) invalPPAListSgid <- mkReg(0);
 
+	let flashRsHigh = flashRs[1];
+	let flashRsLow = flashRs[0];
+
 	// FIXME: below are FIFOs for testing
 	//FIFOF#(Tuple5#(Bit#(32), Bit#(32), Bit#(32), Bit#(32), Bit#(32))) genFlashRead <- mkFIFOF;
 	//FIFOF#(Tuple6#(Bit#(1),Bit#(32),Bit#(32),Bit#(32),Bit#(32),Bit#(32))) genPageConsumed <- mkFIFOF;
@@ -66,14 +69,14 @@ module mkLightStoreKtMerger #(
 	rule driveReadFlashPPAHigh;
 		let ppa <- addrManager.getPPAHigh;
 		let d = toDualFlashAddr(ppa);
-		flashRs[0].request.put(d);
+		flashRsHigh.request.put(d);
 		//genFlashRead.enq(tuple5(ppa, extend(d.bus), extend(d.chip), extend(d.block), extend(d.page)));
 	endrule
 
 	rule driveReadFlashPPALow;
 		let ppa <- addrManager.getPPALow;
 		let d = toDualFlashAddr(ppa);
-		flashRs[1].request.put(d);
+		flashRsLow.request.put(d);
 		//genFlashRead.enq(tuple5(ppa, extend(d.bus), extend(d.chip), extend(d.block), extend(d.page)));
 	endrule
 
@@ -84,7 +87,7 @@ module mkLightStoreKtMerger #(
 	Reg#(Bit#(10)) ktHighBeatCnt <- mkReg(0);
 	Reg#(Bit#(32)) genPageCntHigh <- mkReg(0);
 	rule driveKtHighLvl;
-		let d <- flashRs[0].response.get();
+		let d <- flashRsHigh.response.get();
 
 		// drop 32B
 		if (ktHighBeatCnt < fromInteger(wordsPer8192Page)) begin
@@ -97,7 +100,7 @@ module mkLightStoreKtMerger #(
 		else begin
 			ktHighBeatCnt <= 0;
 			//genPageConsumed.enq(
-			//	unpack({1'b0, genPageCntHigh, pack(ktMerger.mergerDebug)})
+			//	unpack({1'b0, genPageCntHigh, pack(ktMerger.mergerStatus)})
 			//	);
 			genPageCntHigh <= genPageCntHigh + 1;
 		end
@@ -106,7 +109,7 @@ module mkLightStoreKtMerger #(
 	Reg#(Bit#(10)) ktLowBeatCnt <- mkReg(0);
 	Reg#(Bit#(32)) genPageCntLow <- mkReg(0);
 	rule driveKtLowLvl;
-		let d <- flashRs[1].response.get();
+		let d <- flashRsLow.response.get();
 
 		// drop 32B
 		if (ktLowBeatCnt < fromInteger(wordsPer8192Page)) begin
@@ -119,11 +122,47 @@ module mkLightStoreKtMerger #(
 		else begin
 			ktLowBeatCnt <= 0;
 			//genPageConsumed.enq(
-			//	unpack({1'b1, genPageCntLow, pack(ktMerger.mergerDebug)})
+			//	unpack({1'b1, genPageCntLow, pack(ktMerger.mergerStatus)})
 			//	);
 			genPageCntLow <= genPageCntLow + 1;
 		end
 	endrule
+
+	///////////////////
+	//////Collect Invalidated PPA
+	////////////////////////////////////////
+
+	Reg#(Bit#(32)) collectedCnt <- mkReg(0);
+	Vector#(3, Reg#(Bit#(32))) ppa4BBuf <- replicateM(mkReg(0));
+
+	FIFOF#(Bit#(128)) ppaDmaWordBuf <- mkFIFOF;
+
+	Reg#(Bool) invalAddrStarted <- mkReg(False);
+	Reg#(Bool) invalAddrFlush <- mkReg(False);
+
+	rule collectInvalAddr (!invalAddrFlush);
+		if (collectedCnt == 0) begin
+			invalAddrStarted <= True;
+		end
+
+		let addr <- ktMerger.getInvalidatedAddr();
+
+		ppa4BBuf[collectedCnt[1:0]] <= addr;
+		
+		if(collectedCnt[1:0]==3) begin
+			ppaDmaWordBuf.enq({addr, ppa4BBuf[2], ppa4BBuf[1], ppa4BBuf[0]});
+		end
+
+		collectedCnt <= collectedCnt + 1;
+	endrule
+
+	rule sendPpaToHost;
+		ppaDmaWordBuf.deq;
+	endrule
+
+	///////////////////
+	//////DMA Merged Keytable to Host
+	////////////////////////////////////////
 
 	Reg#(Bit#(32)) mergerOutputCnt <- mkReg(0);
 	Reg#(Bit#(2)) phase1 <- mkReg(0);
@@ -132,7 +171,6 @@ module mkLightStoreKtMerger #(
 	Vector#(4, FIFO#(Bool)) dmaWriteReqToRespQ <- replicateM(mkSizedFIFO(8));
 
 	rule getMergedKeytable;
-		//ktMerger.getCollectedAddr();
 		let d <- ktMerger.getMergedKt();
 
 		let last = tpl_1(d);
