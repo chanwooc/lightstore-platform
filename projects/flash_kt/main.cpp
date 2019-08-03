@@ -84,8 +84,6 @@ int curReadsInFlight = 0;
 int curWritesInFlight = 0;
 int curErasesInFlight = 0;
 
-int testAckCount = 0; // TODO: test 
-int getTestAckCount() { return testAckCount; }
 
 double timespec_diff_sec( timespec start, timespec end ) {
 	double t = end.tv_sec - start.tv_sec;
@@ -138,25 +136,11 @@ bool checkReadData(int tag) {
 }
 
 int num_merged=-1;
+int num_invalidated;
 
 class FlashIndication: public FlashIndicationWrapper {
 	public:
 		FlashIndication(unsigned int id) : FlashIndicationWrapper(id){}
-// FIXME: indications for testing
-//		virtual void ppaEchoHigh(unsigned int ppa) {
-//			fprintf(stderr, "ppaHigh: %u\n", ppa);
-//			fflush(stderr);
-//			pthread_mutex_lock(&flashReqMutex);
-//			testAckCount = testAckCount+1;
-//			pthread_mutex_unlock(&flashReqMutex);
-//		}
-//		virtual void ppaEchoLow(unsigned int ppa) {
-//			fprintf(stderr, "ppaLow: %u\n", ppa);
-//			fflush(stderr);
-//			pthread_mutex_lock(&flashReqMutex);
-//			testAckCount = testAckCount+1;
-//			pthread_mutex_unlock(&flashReqMutex);
-//		}
 //		virtual void pageReadIssued(unsigned int ppa, unsigned int bus, unsigned int chip, unsigned int block, unsigned int page) {
 //			fprintf(stderr, "pageReadIssued: %u %u %u %u %u \n", ppa, bus, chip, block, page);
 //			fflush(stderr);
@@ -167,13 +151,20 @@ class FlashIndication: public FlashIndicationWrapper {
 //			fflush(stderr);
 //		}
 
-		virtual void mergeDone(unsigned int numMergedKt, uint64_t counter) {
-			fprintf(stderr, "mergeDone: %u %" PRIu64 "\n", numMergedKt, counter);
+		virtual void mergeDone(unsigned int numMergedKt, uint32_t numInvalAddr, uint64_t counter) {
+			fprintf(stderr, "mergeDone: kt%u inval%u timer:%" PRIu64 "\n", numMergedKt, numInvalAddr, counter);
 			fflush(stderr);
 			pthread_mutex_lock(&flashReqMutex);
 			num_merged = (int)numMergedKt;
+			num_invalidated = (int)numInvalAddr;
 			pthread_mutex_unlock(&flashReqMutex);
 		}
+
+//		virtual void invalPpaDone(unsigned int numAddr) {
+//			fprintf(stderr, "invalPpaDone: %u\n", numAddr);
+//			num_invalidated=(int)numAddr;
+//			fflush(stderr);
+//		}
 
 		virtual void readDone(unsigned int tag) {
 
@@ -653,6 +644,7 @@ int main(int argc, const char **argv)
 	//const char* pathL[] = {"uniq32/l_level.bin", "invalidate/l_level.bin", "100_1000/l_level.bin"};
 	
 	const char* pathMerged[] = {"uniq32_hw.bin", "invalidate_hw.bin", "100_1000_hw.bin"};
+	const char* pathInval[] = {"uniq32_inval_hw.bin", "invalidate_inval_hw.bin", "100_1000_inval_hw.bin"};
 
 	//const int startPpaH[] = {0, 100, 300};
 	//const int startPpaL[] = {1, 200, 400};
@@ -695,6 +687,7 @@ int main(int argc, const char **argv)
 		}
 		device->debugDumpReq(0);
 		device->debugDumpReq(0);
+		usleep(100);
 
 		// output data
 		FILE *fp = fopen(pathMerged[i], "wb");
@@ -709,6 +702,21 @@ int main(int argc, const char **argv)
 			return -1;
 		}
 		fclose(fp);
+
+		if (num_invalidated>0) {
+			fp = fopen(pathInval[i], "wb");
+			if (fp == NULL) {
+				fprintf(stderr, "%s open failed\n", pathInval[i]);
+				return -1;
+			}
+			if (fwrite(invalPpaBuf, (size_t)num_invalidated*4, 1, fp) != 1) {
+				fprintf(stderr, "%s write failed\n", pathInval[i]);
+				fclose(fp);
+				return -1;
+			}
+			fclose(fp);
+			num_invalidated=0;
+		}
 	}
 
 	sleep(1);

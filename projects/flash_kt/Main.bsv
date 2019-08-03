@@ -60,7 +60,8 @@ interface FlashRequest;
 endinterface
 
 interface FlashIndication;
-	method Action mergeDone(Bit#(32) numGenKt, Bit#(64) counter);
+	method Action mergeDone(Bit#(32) numGenKt, Bit#(32) numInvalAddr, Bit#(64) counter);
+//	method Action invalPpaDone(Bit#(32) numInvalPpa);
 	method Action readDone(Bit#(32) tag);
 	method Action writeDone(Bit#(32) tag);
 	method Action eraseDone(Bit#(32) tag, Bit#(32) status);
@@ -145,9 +146,13 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(mergeRe[0].readServers, wsMerger, flashKtReader.flashReadServers);
 
 	rule mergeDone;
-		let {numKt, counter} <- ktMergeManager.mergeDone;
-		indication.mergeDone(numKt, counter);
+		let {numKt, numInvalAddr, counter} <- ktMergeManager.mergeDone;
+		indication.mergeDone(numKt, numInvalAddr, counter);
 	endrule
+//	rule invalPpaDone;
+//		let d <- ktMergeManager.invalPpaDone;
+//		indication.invalPpaDone(d);
+//	endrule
 
 // FIXME: testing only rules & indications
 //	rule flashReadGen;

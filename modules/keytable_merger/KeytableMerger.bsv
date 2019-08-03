@@ -43,7 +43,7 @@ interface KeytableMerger;
 	method Action enqLowLevelKt(Bit#(WordSz) beat);
 
 	method ActionValue#(Tuple2#(Bool,Bit#(WordSz))) getMergedKt();
-	method ActionValue#(Bit#(32)) getInvalidatedAddr();
+	method ActionValue#(Maybe#(Bit#(32))) getInvalidatedAddr();
 	method Bool isInvalAddrDone();
 
 	method Tuple4#(Bit#(32), Bit#(32), Bit#(32), Bit#(32)) mergerStatus();
@@ -103,7 +103,7 @@ module mkKeytableMerger (KeytableMerger ifc);
 
 	FIFOF#(Tuple2#(Bool, Bit#(WordSz))) createdKtStream <- mkFIFOF;
 
-	FIFOF#(Bit#(32)) collectedAddrQ <- mkFIFOF; //mkBypassFIFOF;
+	FIFOF#(Maybe#(Bit#(32))) collectedAddrQ <- mkFIFOF; //mkBypassFIFOF;
 
 	// Pre-processing header
 	for(Integer i=0; i<2; i=i+1) begin
@@ -241,8 +241,10 @@ module mkKeytableMerger (KeytableMerger ifc);
 			h_ktBeatCntStream.deq;
 			l_ktBeatCntStream.deq;
 
-			// TODO: signal downstream to flush KT
+			// signal downstream to flush KT
 			mergedSizeInfo.enq(tagged Invalid);
+			// signal Invalid Addr flush
+			collectedAddrQ.enq(tagged Invalid);
 		end
 		else if (h_signalDone && !l_signalDone ) begin
 			if(isValid(l_entryBuf[0])) begin
@@ -420,10 +422,10 @@ module mkKeytableMerger (KeytableMerger ifc);
 
 					if(collectedAddrQ.notFull) begin // if full, just drop (OKAY to drop i guess...)
 						if(isValid(l_entryBuf[0])) begin
-							collectedAddrQ.enq(truncate(fromMaybe(?, l_entryBuf[0])));
+							collectedAddrQ.enq(tagged Valid truncate(fromMaybe(?, l_entryBuf[0])));
 						end
 						else begin
-							collectedAddrQ.enq(truncate(l_ktEntryStream.first));
+							collectedAddrQ.enq(tagged Valid truncate(l_ktEntryStream.first));
 						end
 					end
 				end
@@ -611,7 +613,7 @@ module mkKeytableMerger (KeytableMerger ifc);
 		createdKtStream.deq;
 		return createdKtStream.first;
 	endmethod
-	method ActionValue#(Bit#(32)) getInvalidatedAddr();
+	method ActionValue#(Maybe#(Bit#(32))) getInvalidatedAddr();
 		collectedAddrQ.deq;
 		return collectedAddrQ.first;
 	endmethod

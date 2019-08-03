@@ -38,7 +38,8 @@ interface LightStoreKtMerger;
 	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
 	method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
 
-	method ActionValue#(Tuple2#(Bit#(32), Bit#(64))) mergeDone;
+	method ActionValue#(Tuple3#(Bit#(32), Bit#(32), Bit#(64))) mergeDone;
+//	method ActionValue#(Bit#(32)) invalPpaDone;
 
 // FIXME: below are methods for testing
 //	method ActionValue#(Tuple5#(Bit#(32), Bit#(32), Bit#(32), Bit#(32), Bit#(32))) pageReadIssued;
@@ -133,32 +134,120 @@ module mkLightStoreKtMerger #(
 	////////////////////////////////////////
 
 	Reg#(Bit#(32)) collectedCnt <- mkReg(0);
-	Vector#(3, Reg#(Bit#(32))) ppa4BBuf <- replicateM(mkReg(0));
+	Vector#(4, Reg#(Bit#(32))) ppa4BBuf <- replicateM(mkReg(0));
 
 	FIFOF#(Bit#(128)) ppaDmaWordBuf <- mkFIFOF;
 
-	Reg#(Bool) invalAddrStarted <- mkReg(False);
 	Reg#(Bool) invalAddrFlush <- mkReg(False);
+	Reg#(Bool) invalAddrDone <- mkReg(False);
+
+	Reg#(Bit#(5)) padCnt <- mkRegU;
+	Reg#(Bit#(2)) padPhase <- mkRegU;
+
+	FIFOF#(Bit#(32)) ppaWDmaDoneSignal <- mkFIFOF;
 
 	rule collectInvalAddr (!invalAddrFlush);
-		if (collectedCnt == 0) begin
-			invalAddrStarted <= True;
+		let m_addr <- ktMerger.getInvalidatedAddr();
+		if (isValid(m_addr)) begin // valid ppa
+			let addr = fromMaybe(?, m_addr);
+
+			ppa4BBuf[collectedCnt[1:0]] <= addr;
+			if(collectedCnt[1:0]==3) begin
+				ppaDmaWordBuf.enq({addr, ppa4BBuf[2], ppa4BBuf[1], ppa4BBuf[0]});
+			end
+
+			collectedCnt <= collectedCnt + 1;
 		end
+		else begin
+			// 128 Byte DMA: 32 ppas: log(32) = 5
+			ppaWDmaDoneSignal.enq(collectedCnt);
+			collectedCnt <= 0;
+			Bit#(5) entriesInBurst = truncate(collectedCnt);
+			if (entriesInBurst != 0) begin
+				Bit#(5) padNum = truncate(6'd32 - zeroExtend(entriesInBurst));
+				padCnt <= padNum;
+				padPhase <= truncate(collectedCnt);
+				invalAddrFlush <= True;
+			end
+		end
+	endrule
 
-		let addr <- ktMerger.getInvalidatedAddr();
-
-		ppa4BBuf[collectedCnt[1:0]] <= addr;
+	rule collectInvalAddr2 (invalAddrFlush);
+		ppa4BBuf[padPhase] <= 0; // zero fill
 		
-		if(collectedCnt[1:0]==3) begin
-			ppaDmaWordBuf.enq({addr, ppa4BBuf[2], ppa4BBuf[1], ppa4BBuf[0]});
+		if(padPhase==3) begin
+			ppaDmaWordBuf.enq(zeroExtend({ppa4BBuf[2], ppa4BBuf[1], ppa4BBuf[0]}));
 		end
 
-		collectedCnt <= collectedCnt + 1;
+		padPhase <= padPhase + 1;
+
+		if (padCnt == 1) begin
+			invalAddrFlush <= False;
+		end
+		padCnt <= padCnt - 1;
 	endrule
 
+	// 128B DMA Burst = 8 Words
+	FIFO#(Bit#(128)) dmaPpaWriteOut <- mkSizedFIFO(8);
+	FIFO#(Bool) dmaPpaWriteReqQ <- mkFIFO;
+	Reg#(Bit#(6)) ppaOutBeatCnt <- mkReg(0);
 	rule sendPpaToHost;
-		ppaDmaWordBuf.deq;
+		let word <- toGet(ppaDmaWordBuf).get;
+		dmaPpaWriteOut.enq(word);
+
+		if(ppaOutBeatCnt == 7) begin
+			ppaOutBeatCnt <= 0;
+			dmaPpaWriteReqQ.enq(?); // send the req at the end.. (whenever 128B collected)
+		end
+		else ppaOutBeatCnt <= ppaOutBeatCnt+1;
 	endrule
+
+	Reg#(Bit#(32)) ppaOutDmaReqSent <- mkReg(0);
+	FIFO#(Bool) dmaPpaWReqToRespQ <- mkFIFO;
+	rule genDmaPpaWReq;
+		dmaPpaWriteReqQ.deq;
+		let dmaCmd = MemengineCmd {
+			sglId: invalPPAListSgid,
+			base: zeroExtend(ppaOutDmaReqSent)<<fromInteger(log2(dmaBurstBytes)),
+			len: fromInteger(dmaBurstBytes),
+			burstLen: fromInteger(dmaBurstBytes)
+		};
+		ws[4].request.put(dmaCmd);
+
+		dmaPpaWReqToRespQ.enq(?);
+
+		ppaOutDmaReqSent <= ppaOutDmaReqSent + 1;
+	endrule
+
+	rule sendPpaDmaData;
+		let d <- toGet(dmaPpaWriteOut).get;
+		ws[4].data.enq(d);
+	endrule
+
+	Reg#(Bit#(32)) ppaOutDmaRespRecv <- mkReg(0);
+	rule ppaDmaGetResponse;
+		dmaPpaWReqToRespQ.deq;
+		let dummy <- ws[4].done.get;
+		ppaOutDmaRespRecv <= ppaOutDmaRespRecv + 1;
+	endrule
+
+	FIFO#(Bit#(32)) invalPpaDoneQ <- mkFIFO;
+	rule doneDma;
+		let numPpas = ppaWDmaDoneSignal.first;
+		// Every 32 item = 1DMA burst = 128B
+		Bit#(32) numReq = numPpas >> 5;
+		if(numPpas[4:0] != 0) numReq = numReq+1;
+
+		if(ppaOutDmaRespRecv == numReq) begin
+			invalPpaDoneQ.enq(numPpas);
+			ppaWDmaDoneSignal.deq;
+
+			ppaOutDmaReqSent <= 0;
+			ppaOutDmaRespRecv <= 0;
+		end
+	endrule
+
+	// DMA Invalidated PPA List to Host //
 
 	///////////////////
 	//////DMA Merged Keytable to Host
@@ -261,7 +350,7 @@ module mkLightStoreKtMerger #(
 		endrule
 	end
 
-	FIFO#(Tuple2#(Bit#(32), Bit#(64))) mergeDoneQ <- mkFIFO;
+	FIFO#(Tuple3#(Bit#(32), Bit#(32), Bit#(64))) mergeDoneQ <- mkFIFO;
 	rule indMergeDone;
 		Bit#(32) d = 0;
 		for (Integer i=0; i<4; i=i+1) begin
@@ -269,7 +358,8 @@ module mkLightStoreKtMerger #(
 			ktGeneratedDone[i].deq;
 		end
 
-		mergeDoneQ.enq(tuple2(d, counter-counter_firstOut));
+		let invalAddrs <- toGet(invalPpaDoneQ).get;
+		mergeDoneQ.enq(tuple3(d, invalAddrs, counter-counter_firstOut));
 	endrule
 
 	method Action startCompaction(Bit#(32) numKtHigh, Bit#(32) numKtLow);
@@ -286,10 +376,9 @@ module mkLightStoreKtMerger #(
 		mergedKtBufSgid <= sgIdKtBuf;
 		invalPPAListSgid <= sgIdInvalPPA;
 	endmethod
-	method ActionValue#(Tuple2#(Bit#(32), Bit#(64))) mergeDone;
-		let d <- toGet(mergeDoneQ).get;
-		return d;
-	endmethod
+
+	method ActionValue#(Tuple3#(Bit#(32), Bit#(32), Bit#(64))) mergeDone = toGet(mergeDoneQ).get;
+	//method ActionValue#(Bit#(32)) invalPpaDone = toGet(invalPpaDoneQ).get;
 
 // FIXME: below are methods for testing
 //	method ActionValue#(Tuple5#(Bit#(32), Bit#(32), Bit#(32), Bit#(32), Bit#(32))) pageReadIssued;
