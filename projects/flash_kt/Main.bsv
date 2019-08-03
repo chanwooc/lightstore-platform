@@ -51,7 +51,7 @@ interface FlashRequest;
 	method Action setDmaWriteRef(Bit#(32) sgId);
 
 	method Action startCompaction(Bit#(32) cntHigh, Bit#(32) cntLow);
-	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
+	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
 	method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
 
 	method Action start(Bit#(32) dummy);
@@ -164,11 +164,11 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 //		indication.pageConsumed(zeroExtend(tpl_1(d)), tpl_2(d), tpl_3(d), tpl_4(d), tpl_5(d), tpl_6(d));
 //	endrule
 //	rule indPPAHigh;
-//		let d <- ktMergeManager.getPPAHigh;
+//		let d <- ktMergeManager.getPpaHigh;
 //		indication.ppaEchoHigh(d);
 //	endrule
 //	rule indPPALow;
-//		let d <- ktMergeManager.getPPALow;
+//		let d <- ktMergeManager.getPpaLow;
 //		indication.ppaEchoLow(d);
 //	endrule
 
@@ -565,8 +565,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		method Action startCompaction(Bit#(32) cntHigh, Bit#(32) cntLow);
 			ktMergeManager.startCompaction(cntHigh, cntLow);
 		endmethod
-		method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
-			ktMergeManager.setDmaKtPPARef(sgIdHigh, sgIdLow, sgIdRes);
+		method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
+			ktMergeManager.setDmaKtPpaRef(sgIdHigh, sgIdLow, sgIdRes);
 		endmethod
 		method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
 			ktMergeManager.setDmaKtOutputRef(sgIdKtBuf, sgIdInvalPPA);

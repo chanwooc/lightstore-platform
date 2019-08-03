@@ -35,7 +35,7 @@ import FlashCtrlIfc::*;
 // LightStore Keytable Merge Manager
 interface LightStoreKtMerger;
 	method Action startCompaction(Bit#(32) numKtHigh, Bit#(32) numKtLow);
-	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
+	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
 	method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
 
 	method ActionValue#(Tuple3#(Bit#(32), Bit#(32), Bit#(64))) mergeDone;
@@ -44,8 +44,8 @@ interface LightStoreKtMerger;
 // FIXME: below are methods for testing
 //	method ActionValue#(Tuple5#(Bit#(32), Bit#(32), Bit#(32), Bit#(32), Bit#(32))) pageReadIssued;
 //	method ActionValue#(Tuple6#(Bit#(1),Bit#(32),Bit#(32),Bit#(32),Bit#(32),Bit#(32))) pageConsumed;
-//	method ActionValue#(Bit#(32)) getPPAHigh();
-//	method ActionValue#(Bit#(32)) getPPALow();
+//	method ActionValue#(Bit#(32)) getPpaHigh();
+//	method ActionValue#(Bit#(32)) getPpaLow();
 endinterface
 
 module mkLightStoreKtMerger #(
@@ -68,14 +68,14 @@ module mkLightStoreKtMerger #(
 	//FIFOF#(Tuple6#(Bit#(1),Bit#(32),Bit#(32),Bit#(32),Bit#(32),Bit#(32))) genPageConsumed <- mkFIFOF;
 
 	rule driveReadFlashPPAHigh;
-		let ppa <- addrManager.getPPAHigh;
+		let ppa <- addrManager.getPpaHigh;
 		let d = toDualFlashAddr(ppa);
 		flashRsHigh.request.put(d);
 		//genFlashRead.enq(tuple5(ppa, extend(d.bus), extend(d.chip), extend(d.block), extend(d.page)));
 	endrule
 
 	rule driveReadFlashPPALow;
-		let ppa <- addrManager.getPPALow;
+		let ppa <- addrManager.getPpaLow;
 		let d = toDualFlashAddr(ppa);
 		flashRsLow.request.put(d);
 		//genFlashRead.enq(tuple5(ppa, extend(d.bus), extend(d.chip), extend(d.block), extend(d.page)));
@@ -363,14 +363,14 @@ module mkLightStoreKtMerger #(
 	endrule
 
 	method Action startCompaction(Bit#(32) numKtHigh, Bit#(32) numKtLow);
-		addrManager.startGetPPA(numKtHigh, numKtLow);
+		addrManager.startGetPpa(numKtHigh, numKtLow);
 		ktMerger.runMerge(numKtHigh, numKtLow);
 
 		genPageCntHigh <= 0;
 		genPageCntLow <= 0;
 	endmethod
-	method Action setDmaKtPPARef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
-		addrManager.setDmaKtPPARef(sgIdHigh, sgIdLow, sgIdRes);
+	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
+		addrManager.setDmaKtPpaRef(sgIdHigh, sgIdLow, sgIdRes);
 	endmethod
 	method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
 		mergedKtBufSgid <= sgIdKtBuf;
@@ -389,12 +389,12 @@ module mkLightStoreKtMerger #(
 //		let d <- toGet(genPageConsumed).get;
 //		return d;
 //	endmethod
-//	method ActionValue#(Bit#(32)) getPPAHigh();
-//		let d <- addrManager.getPPAHigh;
+//	method ActionValue#(Bit#(32)) getPpaHigh();
+//		let d <- addrManager.getPpaHigh;
 //		return d;
 //	endmethod
-//	method ActionValue#(Bit#(32)) getPPALow();
-//		let d <- addrManager.getPPALow;
+//	method ActionValue#(Bit#(32)) getPpaLow();
+//		let d <- addrManager.getPpaLow;
 //		return d;
 //	endmethod
 endmodule

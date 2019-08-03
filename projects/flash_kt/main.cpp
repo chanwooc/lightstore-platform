@@ -623,7 +623,7 @@ int main(int argc, const char **argv)
 	unsigned int ref_highPpaAlloc = dma->reference(highPpaAlloc);
 	unsigned int ref_lowPpaAlloc = dma->reference(lowPpaAlloc);
 	unsigned int ref_resPpaAlloc = dma->reference(resPpaAlloc);
-	device->setDmaKtPPARef(ref_highPpaAlloc, ref_lowPpaAlloc, ref_resPpaAlloc);
+	device->setDmaKtPpaRef(ref_highPpaAlloc, ref_lowPpaAlloc, ref_resPpaAlloc);
 	fprintf(stderr, "Done setting up PPA DMA\n");
 
 	int mergedKtAlloc = portalAlloc(8192*10000, 0);
