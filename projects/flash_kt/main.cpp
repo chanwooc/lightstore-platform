@@ -7,6 +7,10 @@
 #include <monkit.h>
 #include <semaphore.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <time.h>
 
 // Connectal DMA interface
@@ -20,6 +24,10 @@
 // #define TEST_ERASE_ALL		 // eraseAll.exe's only test
 // #define TEST_MINI_FUNCTION
 #define TEST_READ_SPEED
+// #define TEST_WRITE_SPEED
+// #define KT_WRITE
+// #define KT_READ
+// #define KT_MERGE
 
 #define DEFAULT_VERBOSE_REQ  false
 #define DEFAULT_VERBOSE_RESP false
@@ -595,17 +603,247 @@ int main(int argc, const char **argv)
 	}
 #endif
 
-	if (testPassed==true) {
-		fprintf(stderr, "LOG: TEST PASSED!\n");
-	}
-	else {
-		fprintf(stderr, "LOG: **ERROR: TEST FAILED!\n");
-	}
+#if defined(TEST_WRITE_SPEED)
+	{
+		// Read speed test: No printf / No data generation / No data integrity check
+		verbose_req = false;
+		verbose_resp = false;
 
+		int blkStart = 3001;
+		int blkCnt = 30;
+		int pageStart = 0;
+		int pageCnt = 64;
 
-#if 0
+		timespec start, now;
+		clock_gettime(CLOCK_REALTIME, &start);
+
+		fprintf(stderr, "[TEST] WRITE SPEED (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", blkStart, blkCnt, pageStart, pageCnt); 
+		testWrite(device, blkStart, blkCnt, pageStart, pageCnt, false);
+
+		fprintf(stderr, "[TEST] WRITE SPEED DONE!\n" ); 
+
+		clock_gettime(CLOCK_REALTIME, & now);
+		fprintf(stderr, "SPEED: %f MB/s\n", (8192.0*NUM_BUSES*CHIPS_PER_BUS*blkCnt*pageCnt/1000000)/timespec_diff_sec(start,now));
+	}
 #endif
 
+#if defined(KT_WRITE)
+	{
+		const char* pathH[] = {"uniq32/h_level.bin", "invalidate/h_level.bin", "100_1000/h_level.bin"};
+		const char* pathL[] = {"uniq32/l_level.bin", "invalidate/l_level.bin", "100_1000/l_level.bin"};
+
+		const int startPpaH[] = {0, 100, 300};
+		const int startPpaL[] = {1, 200, 400};
+		//const int startPpaH[] = {2001, 2101, 2301};
+		//const int startPpaL[] = {2002, 2201, 2401};
+
+		const int numPpaH[] = {1, 41, 100};
+		const int numPpaL[] = {1, 88, 1000};
+		for (int ii=0; ii<3; ii++){
+			FILE *h_fp = fopen(pathH[ii], "rb");
+			FILE *l_fp = fopen(pathL[ii], "rb");
+
+			if(h_fp == NULL) {
+				fprintf(stderr, "h_level.bin missing\n");
+				return -1;
+			}
+
+			if(l_fp == NULL) {
+				fprintf(stderr, "l_level.bin missing\n");
+				fclose(h_fp);
+				return -1;
+			}
+
+			struct stat stat_buf;
+			fstat(fileno(h_fp), &stat_buf);
+			size_t h_size = (size_t)stat_buf.st_size;
+
+			if(h_size%8192 != 0) {
+				fprintf(stderr, "h_level.bin size not multiple of 8192\n");
+				fclose(h_fp);
+				fclose(l_fp);
+				return -1;
+			}
+
+			fstat(fileno(l_fp), &stat_buf);
+			size_t l_size = (size_t)stat_buf.st_size;
+
+			if(l_size%8192 != 0) {
+				fprintf(stderr, "l_level.bin size not multiple of 8192\n");
+				fclose(h_fp);
+				fclose(l_fp);
+				return -1;
+			}
+
+			// write page H
+			fprintf(stderr, "Loading %s %d %d\n", pathH[ii], startPpaH[ii], numPpaH[ii]);
+			for (int ppa = startPpaH[ii]; ppa < startPpaH[ii]+numPpaH[ii]; ppa++) {
+				int bus = ppa & 7;
+				int chip = (ppa>>3) & 7;
+				int page = (ppa>>6) & 0xFF;
+				int blk = (ppa>>14);
+
+				int freeTag = waitIdleWriteBuffer();
+				if(fread(writeBuffers[freeTag], 8192, 1, h_fp) != 1) {
+					fprintf(stderr, "h_level.bin read failed %d %d\n", ii, ppa);
+					fclose(h_fp);
+					fclose(l_fp);
+					return -1;
+				}
+				writePage(bus,chip,blk,page,freeTag);
+			}
+
+			fprintf(stderr, "Loading %s %d %d\n", pathL[ii], startPpaL[ii], numPpaL[ii]);
+			for (int ppa = startPpaL[ii]; ppa < startPpaL[ii]+numPpaL[ii]; ppa++) {
+				int bus = ppa & 7;
+				int chip = (ppa>>3) & 7;
+				int page = (ppa>>6) & 0xFF;
+				int blk = (ppa>>14);
+
+				int freeTag = waitIdleWriteBuffer();
+				if(fread(writeBuffers[freeTag], 8192, 1, l_fp) != 1) {
+					fprintf(stderr, "l_level.bin read failed %d %d\n", ii, ppa);
+					fclose(h_fp);
+					fclose(l_fp);
+					return -1;
+				}
+				writePage(bus,chip,blk,page,freeTag);
+			}
+
+			int elapsed = 10000;
+			while (true) {
+				usleep(100);
+				if (elapsed == 0) {
+					elapsed=10000;
+					device->debugDumpReq(0);
+				}
+				else {
+					elapsed--;
+				}
+				if ( getNumWritesInFlight() == 0 ) break;
+			}
+		}
+	}
+#endif
+
+#if defined(KT_READ)
+	{
+		const char* pathH[] = {"uniq32/h_level.bin", "invalidate/h_level.bin", "100_1000/h_level.bin"};
+		const char* pathL[] = {"uniq32/l_level.bin", "invalidate/l_level.bin", "100_1000/l_level.bin"};
+
+		const int startPpaH[] = {0, 100, 300};
+		const int startPpaL[] = {1, 200, 400};
+		//const int startPpaH[] = {2001, 2101, 2301};
+		//const int startPpaL[] = {2002, 2201, 2401};
+
+		const int numPpaH[] = {1, 41, 100};
+		const int numPpaL[] = {1, 88, 1000};
+
+		for (int ii=0; ii<1; ii++){
+			FILE *h_fp = fopen(pathH[ii], "rb");
+			FILE *l_fp = fopen(pathL[ii], "rb");
+
+			if(h_fp == NULL) {
+				fprintf(stderr, "h_level.bin missing\n");
+				return -1;
+			}
+
+			if(l_fp == NULL) {
+				fprintf(stderr, "l_level.bin missing\n");
+				fclose(h_fp);
+				return -1;
+			}
+
+			struct stat stat_buf;
+			fstat(fileno(h_fp), &stat_buf);
+			size_t h_size = (size_t)stat_buf.st_size;
+
+			if(h_size%8192 != 0) {
+				fprintf(stderr, "h_level.bin size not multiple of 8192\n");
+				fclose(h_fp);
+				fclose(l_fp);
+				return -1;
+			}
+
+			fstat(fileno(l_fp), &stat_buf);
+			size_t l_size = (size_t)stat_buf.st_size;
+
+			if(l_size%8192 != 0) {
+				fprintf(stderr, "l_level.bin size not multiple of 8192\n");
+				fclose(h_fp);
+				fclose(l_fp);
+				return -1;
+			}
+
+			// write page H
+			fprintf(stderr, "Reading %s %d %d\n", pathH[ii], startPpaH[ii], numPpaH[ii]);
+			void *tmpbuf = malloc(8192);
+
+			for (int ppa = startPpaH[ii]; ppa < startPpaH[ii]+numPpaH[ii]; ppa++) {
+				int bus = ppa & 7;
+				int chip = (ppa>>3) & 7;
+				int page = (ppa>>6) & 0xFF;
+				int blk = (ppa>>14);
+
+				int freeTag = waitIdleReadBuffer();
+				if(fread(tmpbuf, 8192, 1, h_fp) != 1) {
+					fprintf(stderr, "h_level.bin read failed %d %d\n", ii, ppa);
+					fclose(h_fp);
+					fclose(l_fp);
+					return -1;
+				}
+				readPage(bus,chip,blk,page,freeTag);
+
+				while (true) {
+					usleep(100);
+					if ( getNumReadsInFlight() == 0 ) break;
+				}
+				device->debugDumpReq(0);
+
+				if (memcmp(tmpbuf, readBuffers[freeTag], 8192) != 0) {
+					fprintf(stderr, "h_level.bin read different %d %d\n", ii, ppa);
+					fclose(h_fp);
+					fclose(l_fp);
+					return -1;
+				}
+			}
+
+			fprintf(stderr, "Loading %s %d %d\n", pathL[ii], startPpaL[ii], numPpaL[ii]);
+			for (int ppa = startPpaL[ii]; ppa < startPpaL[ii]+numPpaL[ii]; ppa++) {
+				int bus = ppa & 7;
+				int chip = (ppa>>3) & 7;
+				int page = (ppa>>6) & 0xFF;
+				int blk = (ppa>>14);
+
+				int freeTag = waitIdleReadBuffer();
+				if(fread(tmpbuf, 8192, 1, l_fp) != 1) {
+					fprintf(stderr, "l_level.bin read failed %d %d\n", ii, ppa);
+					fclose(h_fp);
+					fclose(l_fp);
+					return -1;
+				}
+				readPage(bus,chip,blk,page,freeTag);
+
+				while (true) {
+					usleep(100);
+					if ( getNumReadsInFlight() == 0 ) break;
+				}
+				device->debugDumpReq(0);
+
+				if (memcmp(tmpbuf, readBuffers[freeTag], 8192) != 0) {
+					fprintf(stderr, "l_level.bin read different %d %d\n", ii, ppa);
+					fclose(h_fp);
+					fclose(l_fp);
+					return -1;
+				}
+			}
+		}
+	}
+#endif
+
+	sleep(1);
+
+#if defined(KT_MERGE)
 	fprintf(stderr, "Kt Merge Test\n");
 	int highPpaAlloc = portalAlloc(4*1024*200, 0);
 	int lowPpaAlloc = portalAlloc(4*1024*200, 0);
@@ -720,14 +958,6 @@ int main(int argc, const char **argv)
 	}
 
 	sleep(1);
-	sleep(1);
-	sleep(1);
-
-	dma->dereference(ref_srcAlloc);
-	dma->dereference(ref_dstAlloc);
-	portalMunmap(srcBuffer, srcAlloc_sz);
-	portalMunmap(dstBuffer, dstAlloc_sz);
-
 	dma->dereference(ref_highPpaAlloc);
 	dma->dereference(ref_lowPpaAlloc);
 	dma->dereference(ref_resPpaAlloc);
@@ -738,6 +968,21 @@ int main(int argc, const char **argv)
 	portalMunmap(resPpaBuf, 4*1024*200);
 	portalMunmap(mergedKtBuf, 8192*10000);
 	portalMunmap(invalPpaBuf, 4*1024*200);
+
+	sleep(1);
+#endif
+
+	if (testPassed==true) {
+		fprintf(stderr, "LOG: TEST PASSED!\n");
+	}
+	else {
+		fprintf(stderr, "LOG: **ERROR: TEST FAILED!\n");
+	}
+
+	dma->dereference(ref_srcAlloc);
+	dma->dereference(ref_dstAlloc);
+	portalMunmap(srcBuffer, srcAlloc_sz);
+	portalMunmap(dstBuffer, dstAlloc_sz);
 
 	fprintf(stderr, "Done releasing DMA!\n");
 }

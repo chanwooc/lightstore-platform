@@ -56,11 +56,11 @@ module mkKtAddrManager #(
 
 	// [0]: High Level, [1]: Low Level, [2]: Merged result
 	Vector#(3, FIFOF#(Bit#(32))) genPpaReq <- replicateM(mkFIFOF);
-	Vector#(3, FIFOF#(Bit#(32))) ppaList <- replicateM(mkSizedFIFOF(32));
+	Vector#(3, FIFOF#(Bit#(32))) ppaList <- replicateM(mkSizedFIFOF(4));
 
 	for (Integer i=0; i<3; i=i+1) begin
 		Reg#(Bit#(32)) ppaReqSent <- mkReg(0);
-		FIFOF#(Tuple2#(Bool,Bit#(5))) dmaPpaReqToResp <- mkSizedFIFOF(4); // TODO: match ReadEngine cmdQDepth
+		FIFOF#(Tuple2#(Bool,Bit#(5))) dmaPpaReqToResp <- mkSizedFIFOF(2); // TODO: match ReadEngine cmdQDepth
 		rule generatePpaReq;
 			// each req is 8Beat=128B holding 32 Ppa entries
 			// for every 32 KT Ppas, DMA req needs to be generated
@@ -90,7 +90,7 @@ module mkKtAddrManager #(
 
 		// Bit#(2) to indicate # of valid elements in a word (max 4)
 		// 4 is encoded 0 instead
-		FIFOF#(Tuple2#(Bit#(2),Bit#(WordSz))) ppaList4Elem <- mkSizedFIFOF(32); 
+		FIFOF#(Tuple2#(Bit#(2),Bit#(WordSz))) ppaList4Elem <- mkSizedFIFOF(8); 
 		Reg#(Bit#(8)) ppaRespBeat <- mkReg(0);
 		rule collectPpaResp;
 			let d <- toGet(rs[i].data).get;

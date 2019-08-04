@@ -24,6 +24,7 @@
 // #define TEST_ERASE_ALL		 // eraseAll.exe's only test
 // #define TEST_MINI_FUNCTION
 #define TEST_READ_SPEED
+// #define TEST_WRITE_SPEED
 // #define KT_WRITE
 // #define KT_READ
 
@@ -199,7 +200,7 @@ class FlashIndication: public FlashIndicationWrapper {
 
 		virtual void eraseDone(unsigned int tag, unsigned int status) {
 			if ( verbose_resp ) {
-				fprintf(stderr, "LOG: eraseDone, tag=%d, status=%d\n", tag, status); fflush(stdout);
+				fprintf(stderr, "LOG: eraseDone, tag=%d, status=%d\n", tag, status); fflush(stderr);
 			}
 
 			if (status != 0) {
@@ -573,6 +574,29 @@ int main(int argc, const char **argv)
 	}
 #endif
 
+#if defined(TEST_WRITE_SPEED)
+	{
+		// Read speed test: No printf / No data generation / No data integrity check
+		verbose_req = false;
+		verbose_resp = false;
+
+		int blkStart = 3001;
+		int blkCnt = 30;
+		int pageStart = 0;
+		int pageCnt = 64;
+
+		timespec start, now;
+		clock_gettime(CLOCK_REALTIME, &start);
+
+		fprintf(stderr, "[TEST] WRITE SPEED (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", blkStart, blkCnt, pageStart, pageCnt); 
+		testWrite(device, blkStart, blkCnt, pageStart, pageCnt, false);
+
+		fprintf(stderr, "[TEST] WRITE SPEED DONE!\n" ); 
+
+		clock_gettime(CLOCK_REALTIME, & now);
+		fprintf(stderr, "SPEED: %f MB/s\n", (8192.0*NUM_BUSES*CHIPS_PER_BUS*blkCnt*pageCnt/1000000)/timespec_diff_sec(start,now));
+	}
+#endif
 
 #if defined(KT_WRITE)
 	{
@@ -802,5 +826,4 @@ int main(int argc, const char **argv)
 	portalMunmap(srcBuffer, srcAlloc_sz);
 	portalMunmap(dstBuffer, dstAlloc_sz);
 	fprintf(stderr, "Done releasing DMA!\n");
-	sleep(1);
 }
