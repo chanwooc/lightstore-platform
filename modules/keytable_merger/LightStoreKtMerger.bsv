@@ -38,14 +38,13 @@ interface LightStoreKtMerger;
 	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
 	method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
 
+	method ActionValue#(Bit#(32)) getPpaDest;
 	method ActionValue#(Tuple3#(Bit#(32), Bit#(32), Bit#(64))) mergeDone;
 //	method ActionValue#(Bit#(32)) invalPpaDone;
 
 // FIXME: below are methods for testing
 //	method ActionValue#(Tuple5#(Bit#(32), Bit#(32), Bit#(32), Bit#(32), Bit#(32))) pageReadIssued;
 //	method ActionValue#(Tuple6#(Bit#(1),Bit#(32),Bit#(32),Bit#(32),Bit#(32),Bit#(32))) pageConsumed;
-//	method ActionValue#(Bit#(32)) getPpaHigh();
-//	method ActionValue#(Bit#(32)) getPpaLow();
 endinterface
 
 module mkLightStoreKtMerger #(
@@ -279,7 +278,7 @@ module mkLightStoreKtMerger #(
 		end
 	endrule
 
-	FIFO#(Bool) ktLastPageTrig <- mkFIFO;
+	FIFO#(Bit#(32)) ktLastPageTrig <- mkFIFO;
 	Reg#(Bit#(32)) ktResultReqSent <- mkReg(0);
 	Reg#(Bit#(2)) phase2 <- mkReg(0);
 	Integer keytableSizeLog = 13; // 8KB => 2^13 Byte
@@ -302,16 +301,19 @@ module mkLightStoreKtMerger #(
 		else begin
 			ktResultReqSent <= 0;
 			phase2 <= 0;
-			ktLastPageTrig.enq(?);
+			ktLastPageTrig.enq(ktResultReqSent+1);
 		end
 	endrule
 
 	rule trigLastPage;
-		ktLastPageTrig.deq;
+		let num <- toGet(ktLastPageTrig).get;
 		dmaWriteReqToRespQ[0].enq(True);
 		dmaWriteReqToRespQ[1].enq(True);
 		dmaWriteReqToRespQ[2].enq(True);
 		dmaWriteReqToRespQ[3].enq(True);
+
+		// initiate flash write
+		addrManager.startGetPpaDest(num);
 	endrule
 
 	for (int i=0; i<4; i=i+1) begin
@@ -377,6 +379,7 @@ module mkLightStoreKtMerger #(
 		invalPPAListSgid <= sgIdInvalPPA;
 	endmethod
 
+	method ActionValue#(Bit#(32)) getPpaDest = addrManager.getPpaDest;
 	method ActionValue#(Tuple3#(Bit#(32), Bit#(32), Bit#(64))) mergeDone = toGet(mergeDoneQ).get;
 	//method ActionValue#(Bit#(32)) invalPpaDone = toGet(invalPpaDoneQ).get;
 
@@ -387,14 +390,6 @@ module mkLightStoreKtMerger #(
 //	endmethod
 //	method ActionValue#(Tuple6#(Bit#(1),Bit#(32),Bit#(32),Bit#(32),Bit#(32),Bit#(32))) pageConsumed;
 //		let d <- toGet(genPageConsumed).get;
-//		return d;
-//	endmethod
-//	method ActionValue#(Bit#(32)) getPpaHigh();
-//		let d <- addrManager.getPpaHigh;
-//		return d;
-//	endmethod
-//	method ActionValue#(Bit#(32)) getPpaLow();
-//		let d <- addrManager.getPpaLow;
 //		return d;
 //	endmethod
 endmodule

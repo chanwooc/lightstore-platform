@@ -33,6 +33,7 @@ import FlashCtrlZcu::*;
 import FlashCtrlModel::*;
 
 import LightStoreKtMerger::*; // LightStore Keytable Compaction Manager
+import FlashCtrlIfc::*;
 import FlashSwitch::*;
 import FlashReadMultiplex::*;
 `include "ConnectalProjectConfig.bsv"
@@ -60,18 +61,20 @@ interface FlashRequest;
 endinterface
 
 interface FlashIndication;
-	method Action mergeDone(Bit#(32) numGenKt, Bit#(32) numInvalAddr, Bit#(64) counter);
+//	method Action debug1(Bit#(32) d, Bit#(32) e, Bit#(32) f);
+//	method Action debug2(Bit#(32) d);
+//	method Action debug3(Bit#(32) d, Bit#(32) e);
+
 //	method Action invalPpaDone(Bit#(32) numInvalPpa);
+	method Action mergeDone(Bit#(32) numGenKt, Bit#(32) numInvalAddr, Bit#(64) counter);
+	method Action mergeFlushDone(Bit#(32) num);
+
 	method Action readDone(Bit#(32) tag);
 	method Action writeDone(Bit#(32) tag);
 	method Action eraseDone(Bit#(32) tag, Bit#(32) status);
 	method Action debugDumpResp(Bit#(32) debug0, Bit#(32) debug1, Bit#(32) debug2, Bit#(32) debug3, Bit#(32) debug4, Bit#(32) debug5);
 
 // FIXME: indications for testing
-//	method Action ppaEchoHigh(Bit#(32) ppa);
-//	method Action ppaEchoLow(Bit#(32) ppa);
-//	method Action pageReadIssued(Bit#(32) ppa, Bit#(32) bus, Bit#(32) chip, Bit#(32) block, Bit#(32) page);
-//	method Action pageConsumed(Bit#(32) lvl, Bit#(32) cnt, Bit#(32) remKtHigh, Bit#(32) remKtLow, Bit#(32) oriNumKtHigh, Bit#(32) oriNumKtLow );
 endinterface
 
 typedef 128 DmaBurstBytes; 
@@ -108,12 +111,14 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Reg#(Bool) started <- mkReg(False);
 	Reg#(Bit#(64)) cycleCnt <- mkReg(0);
 
-	FIFO#(FlashCmd) flashCmdQ <- mkSizedFIFO(valueOf(NumTags)/2); // TODO: User tag only 64 (remaining 64 for merging)
+	FIFO#(FlashCmd) flashCmdQ <- mkSizedFIFO(4); // virtex has 32 / artix has 128 depth Q
 	Vector#(NumTags, Reg#(BusT)) tag2busTable <- replicateM(mkRegU());
+	Vector#(TDiv#(NumTags,2), Reg#(BusT)) tag2busTableMerge <- replicateM(mkRegU());
 
 	// Offset - pointer
 	Vector#(NumTags, Reg#(Bit#(32))) dmaWriteOffset <- replicateM(mkRegU());
 	Vector#(NumTags, Reg#(Bit#(32))) dmaReadOffset <- replicateM(mkRegU());
+	Vector#(TDiv#(NumTags,2), Reg#(Bit#(32))) dmaKtMergedOffset <- replicateM(mkRegU());
 
 	//--------------------------------------------
 	// Flash Controller/Switch/Manager
@@ -128,16 +133,16 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	FlashSwitch#(3) flashSwitch <- mkFlashSwitch; // users[1] for normal IO & users[0,2] for kt-merging
 	mkConnection(flashSwitch.flashCtrlClient, flashCtrl.user);
 
-	FlashCtrlUser hostFlashCtrlUser = flashSwitch.users[1];
-	FlashCtrlUser ktWriteUser = flashSwitch.users[2];
+	FlashCtrlUser ktWriteUser = flashSwitch.users[1];
+	FlashCtrlUser hostFlashCtrlUser = flashSwitch.users[2];
 
 	FlashReadMultiplex#(2, 1) flashKtReader <- mkFlashReadMultiplex;
 	mkConnection(flashKtReader.flashClient[0], flashSwitch.users[0]);
 
 	//--------------------------------------------
-	// LightStore Compaction Accelerator
+	// LightStore Compaction Accelerator & DMA Engine
 	//--------------------------------------------
-	Vector#(TSub#(NumReadClients,`NumReFlash), MemReadEngine#(DataBusWidth, DataBusWidth, 8, 3)) mergeRe <- replicateM(mkMemReadEngine);
+	Vector#(TSub#(NumReadClients,`NumReFlash), MemReadEngine#(DataBusWidth, DataBusWidth, 2, 3)) mergeRe <- replicateM(mkMemReadEngine);
 	Vector#(TSub#(NumWriteClients, `NumWeFlash), MemWriteEngine#(DataBusWidth, DataBusWidth,  1, 1)) mergeWe <- replicateM(mkMemWriteEngine);
 
 	Vector#(5, MemWriteEngineServer#(DataBusWidth)) wsMerger;
@@ -145,33 +150,58 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(mergeRe[0].readServers, wsMerger, flashKtReader.flashReadServers);
 
+
+	FIFO#(Bit#(32)) initKtWrite <- mkFIFO;
+	FIFOF#(Bit#(32)) ktWriteReqDone <- mkFIFOF;
+	FIFO#(Bit#(TLog#(TDiv#(NumTags,2)))) ktWriteTagQ <- mkSizedFIFO(num_tags/2);
+
+	Reg#(Bool) ktWriteQinit <- mkReg(False);
+	Reg#(Bit#(TLog#(TDiv#(NumTags,2)))) initQCnt <- mkReg(0);
+
+	rule initKtWriteQ (!ktWriteQinit);
+		initQCnt <= initQCnt+1;
+		ktWriteTagQ.enq(initQCnt);
+		if (initQCnt == fromInteger(num_tags/2 -1))
+			ktWriteQinit <= True;
+	endrule
+
 	rule mergeDone;
 		let {numKt, numInvalAddr, counter} <- ktMergeManager.mergeDone;
 		indication.mergeDone(numKt, numInvalAddr, counter);
+
+		initKtWrite.enq(numKt);
 	endrule
-//	rule invalPpaDone;
-//		let d <- ktMergeManager.invalPpaDone;
-//		indication.invalPpaDone(d);
-//	endrule
 
-// FIXME: testing only rules & indications
-//	rule flashReadGen;
-//		let {ppa, bus, chip, block, page} <- ktMergeManager.pageReadIssued;
-//		indication.pageReadIssued(ppa, bus, chip, block, page);
-//	endrule
-//	rule pageConsumedGen;
-//		let d <- ktMergeManager.pageConsumed;
-//		indication.pageConsumed(zeroExtend(tpl_1(d)), tpl_2(d), tpl_3(d), tpl_4(d), tpl_5(d), tpl_6(d));
-//	endrule
-//	rule indPPAHigh;
-//		let d <- ktMergeManager.getPpaHigh;
-//		indication.ppaEchoHigh(d);
-//	endrule
-//	rule indPPALow;
-//		let d <- ktMergeManager.getPpaLow;
-//		indication.ppaEchoLow(d);
-//	endrule
+	Reg#(Bit#(32)) reqSent <- mkReg(0);
+	rule driveKtFlashWriteCmd;
+		let ktsToFlush = initKtWrite.first;
 
+		let newtag <- toGet(ktWriteTagQ).get;
+		let ppa <- ktMergeManager.getPpaDest;
+		let addr = toDualFlashAddr(ppa);
+
+//		indication.debug1(ppa, ktsToFlush, reqSent);
+
+		FlashCmd fcmd = FlashCmd{
+			tag: zeroExtend(newtag),
+			op: WRITE_PAGE,
+			bus: addr.bus,
+			chip: addr.chip,
+			block: extend(addr.block),
+			page: extend(addr.page)
+		};
+
+		if(reqSent == ktsToFlush-1) begin
+			reqSent <= 0;
+			initKtWrite.deq;
+			ktWriteReqDone.enq(ktsToFlush);
+		end
+		else reqSent <= reqSent + 1;
+
+		dmaKtMergedOffset[newtag] <= (reqSent << dmaAllocPageSizeLog);
+		tag2busTableMerge[newtag] <= addr.bus;
+		ktWriteUser.sendCmd(fcmd); //forward cmd to flash ctrl
+	endrule
 
 	//--------------------------------------------
 	// Flash DMA Module Instantiation
@@ -223,15 +253,13 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Reg#(Bit#(32)) dmaWriteSgid <- mkReg(0);
 
 	FIFO#(Tuple2#(Bit#(WordSz), TagT)) dataFlash2DmaQ <- mkFIFO();
-	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBuf <- replicateM(mkSizedFIFO(dmaBurstWords*2)); // mkSizedBRAMFIFO
+	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBuf <- replicateM(mkSizedFIFO(dmaBurstWords*2)); 
 	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBufOut <- replicateM(mkFIFO());
 
-	//Vector#(NUM_ENG_PORTS, Reg#(Bit#(16))) dmaWBurstCnts <- replicateM(mkReg(0));
-	//Vector#(NUM_ENG_PORTS, Reg#(Bit#(16))) dmaWBurstPerPageCnts <- replicateM(mkReg(0));
 	Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) wordPerPageCnts <- replicateM(mkReg(0));
 
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWrReq2RespQ <- replicateM(mkFIFO); //TODO: replicateM(mkSizedFIFO(valueOf(NumTags))); //TODO make bigger?
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWriteReqQ <- replicateM(mkFIFO);//TODO: replicateM(mkSizedFIFO(valueOf(NumTags)));//TODO make bigger?
+	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWrReq2RespQ <- replicateM(mkFIFO); 
+	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWriteReqQ <- replicateM(mkFIFO);
 	Vector#(NUM_ENG_PORTS, FIFOF#(TagT)) dmaWriteDoneQs <- replicateM(mkFIFOF);
 
 	rule doEnqReadFromFlash;
@@ -259,14 +287,11 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		//let bus = dmaWBus;
 		//dmaWBus <= dmaWBus + 1;
 		dmaWriteBuf[bus].enq(taggedRdata);
-		//$display("@%d Main.bsv: rdata tag=%d, bus=%d, data[%d,%d]=%x", cycleCnt, tag, bus,dmaWBurstPerPageCnts[bus], dmaWBurstCnts[bus], data);
 	endrule
 
 	for (Integer b=0; b<valueOf(NUM_ENG_PORTS); b=b+1) begin
 		//Reg#(Bit#(16)) padCnt <- mkReg(0);
 
-		//dmaWBurstCnts: counts # of words(128bit, 16Byte) in a dma burst (128Byte): 0~7
-		//dmaWBurstPerPageCnts: # of a dma burst in a page (8224B: flash page size): 0~65
 		//wordPerPageCnts: # of words (128bit, 16Byte) from flash
 		rule doReqDMAStart;
 			dmaWriteBuf[b].deq;
@@ -338,19 +363,12 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 			$display("@%d Main.bsv: dma resp tag=%d", cycleCnt, tag);
 			dmaWriteDoneQs[b].enq(tag);
 		endrule
-
-//		rule collectReadDone;
-//			dmaWriteDoneQs[b].deq;
-//			let tag = dmaWriteDoneQs[b].first;
-//			indication.readDone(zeroExtend(tag));
-//		endrule
-
 	end //for each bus
 
 	Vector#(NUM_ENG_PORTS, PipeOut#(TagT)) dmaWriteDonePipes = map(toPipeOut, dmaWriteDoneQs);
 	FunnelPipe#(1, NUM_ENG_PORTS, TagT, 2) readAckFunnel <- mkFunnelPipesPipelined(dmaWriteDonePipes);
 
-	FIFO#(TagT) readAckQ <- mkSizedFIFO(valueOf(NumTags)/2); // TODO: User tag only 64 (remaining 64 for merging)
+	FIFO#(TagT) readAckQ <- mkSizedFIFO(4); 
 	mkConnection(toGet(readAckFunnel[0]), toPut(readAckQ));
 
 	rule sendReadDone;
@@ -359,44 +377,54 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	endrule
 
 
-
 	//--------------------------------------------
-	// Writes to Flash (DMA Reads)
+	// Writes to Flash (DMA Reads) for Normal HostIO & Compaction
 	//--------------------------------------------
 	Reg#(Bit#(32)) dmaReadSgid <- mkReg(0);
+	Reg#(Bit#(32)) dmaKtMergedSgid <- mkReg(0);
 
-	FIFO#(Tuple2#(TagT, BusT)) wrToDmaReqQ <- mkFIFO();
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaRdReq2RespQ <- replicateM(mkSizedFIFO(8)); //TODO: replicateM(mkSizedFIFO(valueOf(NumTags))); //TODO sz
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaReadReqQ <- replicateM(mkFIFO); //TODO: replicateM(mkSizedFIFO(valueOf(NumTags)));
+	FIFO#(Tuple3#(TagT, BusT, Bool)) wrToDmaReqQ <- mkFIFO();
+	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(TagT, Bool))) dmaRdReq2RespQ <- replicateM(mkSizedFIFO(8));
+	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(TagT, Bool))) dmaReadReqQ <- replicateM(mkFIFO);
 	Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) dmaReadBurstCount <- replicateM(mkReg(0));
 	//Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) dmaRdReqCnts <- replicateM(mkReg(0));
 
-	//Handle write data requests from controller
+//	Reg#(Bit#(32)) debug2cnt <- mkReg(0);
+	rule handleMergedKtDataRequestFromFlash;
+		TagT tag <- ktWriteUser.writeDataReq();
+		//check which bus it's from
+		Bit#(TLog#(TDiv#(NumTags,2))) ttag = truncate(tag);
+		let bus = tag2busTableMerge[ttag];
+		wrToDmaReqQ.enq(tuple3(tag, bus, False)); // compaction IO
 
+//		debug2cnt <= debug2cnt + 1;
+//		indication.debug2(debug2cnt);
+	endrule
+
+	//Handle write data requests from controller
 	rule handleWriteDataRequestFromFlash1;
 		TagT tag <- hostFlashCtrlUser.writeDataReq();
 		//check which bus it's from
 		let bus = tag2busTable[tag];
-		wrToDmaReqQ.enq(tuple2(tag, bus));
+		wrToDmaReqQ.enq(tuple3(tag, bus, True)); // host IO
 	endrule
-
 
 	rule distrDmaReadReq;
 		wrToDmaReqQ.deq;
-		let r = wrToDmaReqQ.first;
-		let tag = tpl_1(r);
-		let bus = tpl_2(r);
-		dmaReadReqQ[bus].enq(tag);
-		dmaRdReq2RespQ[bus].enq(tag);
-		//dmaReaders[bus].startRead(tag, fromInteger(pageWords));
+		let {tag, bus, hostIO} = wrToDmaReqQ.first;
+		dmaReadReqQ[bus].enq(tuple2(tag, hostIO));
+		dmaRdReq2RespQ[bus].enq(tuple2(tag, hostIO));
 	endrule
 
 	for (Integer b=0; b<valueOf(NUM_ENG_PORTS); b=b+1) begin
 		rule initDmaRead;
-			let tag = dmaReadReqQ[b].first;
-			let offset = dmaReadOffset[tag];
+			let {tag, hostIO} = dmaReadReqQ[b].first;
+//			indication.debug3(extend(tag), extend(pack(hostIO)));
+
+			Bit#(TLog#(TDiv#(NumTags,2))) ttag = truncate(tag);
+			let offset = (hostIO)?dmaReadOffset[tag]:dmaKtMergedOffset[ttag];
 			let dmaCmd = MemengineCmd {
-								sglId: dmaReadSgid, 
+								sglId: (hostIO)?dmaReadSgid:dmaKtMergedSgid, 
 								base: zeroExtend(offset),
 								len:fromInteger(dmaLength), 
 								burstLen:fromInteger(dmaBurstBytes)
@@ -417,21 +445,31 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		endrule
 
 		FIFO#(Tuple2#(Bit#(128), TagT)) writeWordPipe <- mkFIFO();
+		FIFO#(Tuple2#(Bit#(128), TagT)) writeWordPipeMerged <- mkFIFO();
 		Reg#(Bit#(16)) padCntR <- mkReg(0);
 		Reg#(TagT) padTagR <- mkReg(0);
+		Reg#(Bit#(16)) padCntRMerged <- mkReg(0);
+		Reg#(TagT) padTagRMerged <- mkReg(0);
 		rule pipeDmaRdData ( padCntR == 0 );
 			let d = rdDataPipe.first;
 			rdDataPipe.deq;
-			let tag = dmaRdReq2RespQ[b].first;
+			let {tag, hostIO} = dmaRdReq2RespQ[b].first;
 
-			writeWordPipe.enq(tuple2(d,tag));
+			if(hostIO) writeWordPipe.enq(tuple2(d,tag));
+			else writeWordPipeMerged.enq(tuple2(d,tag));
 
 			if (dmaReadBurstCount[b] == fromInteger(wordsPer8192Page-1)) begin
 				dmaRdReq2RespQ[b].deq;
 				dmaReadBurstCount[b] <= 0;
 
-				padCntR <= fromInteger(wordsPerFlashPage - wordsPer8192Page);
-				padTagR <= tag;
+				if(hostIO) begin
+					padCntR <= fromInteger(wordsPerFlashPage - wordsPer8192Page);
+					padTagR <= tag;
+				end
+				else begin
+					padCntRMerged <= fromInteger(wordsPerFlashPage - wordsPer8192Page);
+					padTagRMerged <= tag;
+				end
 			end
 			else begin
 				dmaReadBurstCount[b] <= dmaReadBurstCount[b] + 1;
@@ -443,13 +481,22 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 			padCntR <= padCntR-1;
 		endrule
 
+		rule doPaddingKtMergeFlash (padCntRMerged > 0);
+			writeWordPipeMerged.enq(tuple2(0,padTagRMerged)); // pad 0 to spare
+			padCntRMerged <= padCntRMerged-1;
+		endrule
+
 		rule forwardDmaRdData;
 			writeWordPipe.deq;
 			hostFlashCtrlUser.writeWord(writeWordPipe.first);
 			debugWriteCnt <= debugWriteCnt + 1;
 		endrule
+
+		rule forwardDmaRdDataMerged;
+			writeWordPipeMerged.deq;
+			ktWriteUser.writeWord(writeWordPipeMerged.first);
+		endrule
 	end //for each eng_port
-	
 
 
 	//--------------------------------------------
@@ -464,13 +511,36 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	endrule
 
 	rule indicateControllerAck;
-		ackQ.deq;
-		TagT tag = tpl_1(ackQ.first);
-		StatusT st = tpl_2(ackQ.first);
-		case (st)
+		let {tag, status} <- toGet(ackQ).get;
+		case (status)
 			WRITE_DONE: indication.writeDone(zeroExtend(tag));
 			ERASE_DONE: indication.eraseDone(zeroExtend(tag), 0);
 			ERASE_ERROR: indication.eraseDone(zeroExtend(tag), 1);
+		endcase
+	endrule
+
+	FIFO#(Tuple2#(TagT, StatusT)) ackKtQ <- mkFIFO;
+	Reg#(Bit#(32)) numKtWritten <- mkReg(0);
+	rule handleControllerAckKtMerge;
+		let ackStatus <- ktWriteUser.ackStatus();
+		ackKtQ.enq(ackStatus);
+	endrule
+
+	rule handleControllerAckKtMerge2;
+		let {tag, status} <- toGet(ackKtQ).get;
+		case (status)
+			WRITE_DONE: begin
+				ktWriteTagQ.enq(truncate(tag));
+
+				if(ktWriteReqDone.notEmpty&&(numKtWritten==ktWriteReqDone.first-1)) begin
+					ktWriteReqDone.deq;
+					numKtWritten <= 0;
+					indication.mergeFlushDone(0);
+				end
+				else begin
+					numKtWritten <= numKtWritten + 1;
+				end
+			end
 		endcase
 	endrule
 
@@ -564,12 +634,14 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		// Compaction related
 		method Action startCompaction(Bit#(32) cntHigh, Bit#(32) cntLow);
 			ktMergeManager.startCompaction(cntHigh, cntLow);
+//			debug2cnt<=0;
 		endmethod
 		method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
 			ktMergeManager.setDmaKtPpaRef(sgIdHigh, sgIdLow, sgIdRes);
 		endmethod
 		method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
 			ktMergeManager.setDmaKtOutputRef(sgIdKtBuf, sgIdInvalPPA);
+			dmaKtMergedSgid <= sgIdKtBuf;
 		endmethod
 
 		method Action start(Bit#(32) dummy);

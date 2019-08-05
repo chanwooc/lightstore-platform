@@ -27,7 +27,8 @@
 // #define TEST_WRITE_SPEED
 // #define KT_WRITE
 // #define KT_READ
-// #define KT_MERGE
+#define KT_MERGE
+#define KT_READ_MERGE
 
 #define DEFAULT_VERBOSE_REQ  false
 #define DEFAULT_VERBOSE_RESP false
@@ -69,8 +70,8 @@ FlashRequestProxy *device;
 pthread_mutex_t flashReqMutex;
 
 //8k * 128
-size_t dstAlloc_sz = FPAGE_SIZE * NUM_TAGS * sizeof(unsigned char);
-size_t srcAlloc_sz = FPAGE_SIZE * NUM_TAGS * sizeof(unsigned char);
+size_t dstAlloc_sz = FPAGE_SIZE * NUM_TAGS * sizeof(unsigned char) * 100; //100MB
+size_t srcAlloc_sz = FPAGE_SIZE * NUM_TAGS * sizeof(unsigned char) * 100; //100MB
 int dstAlloc;
 int srcAlloc;
 unsigned int ref_dstAlloc;
@@ -144,6 +145,7 @@ bool checkReadData(int tag) {
 }
 
 int num_merged=-1;
+int flush_done=-1;
 int num_invalidated;
 
 class FlashIndication: public FlashIndicationWrapper {
@@ -158,6 +160,23 @@ class FlashIndication: public FlashIndicationWrapper {
 //			fprintf(stderr, "pageConsumed: Level(%u) PageCnt(%u) Merger(%u %u %u %u)\n", lvl, cnt, a, b, c, d);
 //			fflush(stderr);
 //		}
+//		virtual void debug1(unsigned int num, uint32_t num2, uint32_t num3) {
+//			fprintf(stderr, "Flash WReq on ppa %u, ToFlush%u ReqSent%u \n", num,num2,num3);
+//			fflush(stderr);
+//		}
+//		virtual void debug2(unsigned int num) {
+//			fprintf(stderr, "Flash WReqResp %u \n", num);
+//			fflush(stderr);
+//		}
+//		virtual void debug3(unsigned int num, unsigned int num2) {
+//			fprintf(stderr, "Flash WReqDMAR %u type %u \n", num, num2);
+//			fflush(stderr);
+//		}
+//		virtual void invalPpaDone(unsigned int numAddr) {
+//			fprintf(stderr, "invalPpaDone: %u\n", numAddr);
+//			num_invalidated=(int)numAddr;
+//			fflush(stderr);
+//		}
 
 		virtual void mergeDone(unsigned int numMergedKt, uint32_t numInvalAddr, uint64_t counter) {
 			fprintf(stderr, "mergeDone: kt%u inval%u timer:%" PRIu64 "\n", numMergedKt, numInvalAddr, counter);
@@ -168,16 +187,17 @@ class FlashIndication: public FlashIndicationWrapper {
 			pthread_mutex_unlock(&flashReqMutex);
 		}
 
-//		virtual void invalPpaDone(unsigned int numAddr) {
-//			fprintf(stderr, "invalPpaDone: %u\n", numAddr);
-//			num_invalidated=(int)numAddr;
-//			fflush(stderr);
-//		}
+		virtual void mergeFlushDone(unsigned int num) {
+			fprintf(stderr, "mergeFlushDone: %u \n", num);
+			fflush(stderr);
+			pthread_mutex_lock(&flashReqMutex);
+			flush_done = 1;
+			pthread_mutex_unlock(&flashReqMutex);
+		}
 
 		virtual void readDone(unsigned int tag) {
 
 			bool readPassed = false;
-
 			if ( verbose_resp ) {
 				fprintf(stderr, "LOG: pagedone: tag=%d; inflight=%d\n", tag, curReadsInFlight );
 				fflush(stderr);
@@ -609,7 +629,7 @@ int main(int argc, const char **argv)
 		verbose_req = false;
 		verbose_resp = false;
 
-		int blkStart = 3001;
+		int blkStart = 3091;
 		int blkCnt = 30;
 		int pageStart = 0;
 		int pageCnt = 64;
@@ -798,7 +818,6 @@ int main(int argc, const char **argv)
 					usleep(100);
 					if ( getNumReadsInFlight() == 0 ) break;
 				}
-				device->debugDumpReq(0);
 
 				if (memcmp(tmpbuf, readBuffers[freeTag], 8192) != 0) {
 					fprintf(stderr, "h_level.bin read different %d %d\n", ii, ppa);
@@ -828,7 +847,6 @@ int main(int argc, const char **argv)
 					usleep(100);
 					if ( getNumReadsInFlight() == 0 ) break;
 				}
-				device->debugDumpReq(0);
 
 				if (memcmp(tmpbuf, readBuffers[freeTag], 8192) != 0) {
 					fprintf(stderr, "l_level.bin read different %d %d\n", ii, ppa);
@@ -881,13 +899,14 @@ int main(int argc, const char **argv)
 	//const char* pathH[] = {"uniq32/h_level.bin", "invalidate/h_level.bin", "100_1000/h_level.bin"};
 	//const char* pathL[] = {"uniq32/l_level.bin", "invalidate/l_level.bin", "100_1000/l_level.bin"};
 	
-	const char* pathMerged[] = {"uniq32_hw.bin", "invalidate_hw.bin", "100_1000_hw.bin"};
+	const char* pathM[] = {"uniq32_hw.bin", "invalidate_hw.bin", "100_1000_hw.bin"};
 	const char* pathInval[] = {"uniq32_inval_hw.bin", "invalidate_inval_hw.bin", "100_1000_inval_hw.bin"};
 
 	//const int startPpaH[] = {0, 100, 300};
 	//const int startPpaL[] = {1, 200, 400};
 	const int startPpaH[] = {2001, 2101, 2301};
 	const int startPpaL[] = {2002, 2201, 2401};
+	const int startPpaR[] = {30001,30101,31001};
 
 	const int numPpaH[] = {1, 41, 100};
 	const int numPpaL[] = {1, 88, 1000};
@@ -895,6 +914,7 @@ int main(int argc, const char **argv)
 	for (int i = 0; i < 3; i++){
 		unsigned int numTableHigh=numPpaH[i];
 		num_merged = -1;
+		flush_done = -1;
 		for (unsigned int t=0; t < numTableHigh; t++) {
 			highPpaBuf[t] = startPpaH[i]+t;
 		}
@@ -902,6 +922,10 @@ int main(int argc, const char **argv)
 		unsigned int numTableLow=numPpaL[i];
 		for (unsigned int t=0; t < numTableLow; t++) {
 			lowPpaBuf[t] = startPpaL[i]+t;
+		}
+
+		for (unsigned int t=0; t < numTableHigh+numTableLow; t++) {
+			resPpaBuf[t] = startPpaR[i]+t;
 		}
 
 		// start Test
@@ -924,18 +948,41 @@ int main(int argc, const char **argv)
 			if ( num_merged != -1 ) break;
 		}
 		device->debugDumpReq(0);
-		device->debugDumpReq(0);
 		usleep(100);
 
+
+		fprintf(stderr, "Waiting for flush\n"); 
+		fflush(stderr);
+
+		while (true) {
+			usleep(100);
+			if (elapsed == 0) {
+				elapsed=10000;
+				device->debugDumpReq(0);
+			}
+			else {
+				elapsed--;
+			}
+			if ( flush_done != -1 ) break;
+		}
+
+		fflush(stderr);
+
+		fprintf(stderr, "Dumping results..\n"); 
+		device->debugDumpReq(0);
+		device->debugDumpReq(0);
+		usleep(1000);
+		usleep(1000);
+
 		// output data
-		FILE *fp = fopen(pathMerged[i], "wb");
+		FILE *fp = fopen(pathM[i], "wb");
 		if (fp == NULL) {
-			fprintf(stderr, "%s open failed\n", pathMerged[i]);
+			fprintf(stderr, "%s open failed\n", pathM[i]);
 			return -1;
 		}
 
 		if (fwrite(mergedKtBuf, (size_t)num_merged*8192, 1, fp) != 1) {
-			fprintf(stderr, "%s write failed\n", pathMerged[i]);
+			fprintf(stderr, "%s write failed\n", pathM[i]);
 			fclose(fp);
 			return -1;
 		}
@@ -970,6 +1017,58 @@ int main(int argc, const char **argv)
 	portalMunmap(invalPpaBuf, 4*1024*200);
 
 	sleep(1);
+#endif
+
+#if defined(KT_READ_MERGE)
+	{
+		const char* pathM[] = {"uniq32_flash.bin", "invalidate_flash.bin", "100_1000_flash.bin"};
+		const int startPpaR[] = {30001,30101,31001};
+
+		const int numPpaR[] = {2, 107, 1099};
+
+		for (int ii=0; ii<3; ii++){
+			fprintf(stderr, "Reading %s\n", pathM[ii]);
+			FILE *fp = fopen(pathM[ii], "wb");
+
+			if(fp == NULL) {
+				fprintf(stderr, "%s openFailed\n", pathM[ii]);
+				fclose(fp);
+				return -1;
+			}
+
+			for (int ppa = startPpaR[ii]; ppa < startPpaR[ii]+numPpaR[ii]; ppa++) {
+				int bus = ppa & 7;
+				int chip = (ppa>>3) & 7;
+				int page = (ppa>>6) & 0xFF;
+				int blk = (ppa>>14);
+
+				int freeTag = waitIdleReadBuffer();
+
+				pthread_mutex_lock(&flashReqMutex);
+				curReadsInFlight ++;
+				readTagTable[freeTag].bus = bus;
+				readTagTable[freeTag].chip = chip;
+				readTagTable[freeTag].block = blk;
+				readTagTable[freeTag].page = page;
+				readTagTable[freeTag].checkRead = false;
+				pthread_mutex_unlock(&flashReqMutex);
+
+				device->readPage(bus,chip,blk,page,freeTag, (ppa-startPpaR[ii])*FPAGE_SIZE);
+			}
+
+			while (true) {
+				usleep(100);
+				if ( getNumReadsInFlight() == 0 ) break;
+			}
+
+			if (fwrite(dstBuffer, 8192*numPpaR[ii], 1, fp) != 1) {
+				fprintf(stderr, "%s write failed\n", pathM[ii]);
+				fclose(fp);
+				return -1;
+			}
+			fclose(fp);
+		}
+	}
 #endif
 
 	if (testPassed==true) {
