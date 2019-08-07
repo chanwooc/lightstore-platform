@@ -23,12 +23,13 @@
 // Test Definitions
 // #define TEST_ERASE_ALL		 // eraseAll.exe's only test
 // #define TEST_MINI_FUNCTION
-#define TEST_READ_SPEED
+// #define TEST_READ_SPEED
+#define TEST_HEAVY_READ
 // #define TEST_WRITE_SPEED
 // #define KT_WRITE
 // #define KT_READ
-#define KT_MERGE
-#define KT_READ_MERGE
+// #define KT_MERGE
+// #define KT_READ_MERGE
 
 #define DEFAULT_VERBOSE_REQ  false
 #define DEFAULT_VERBOSE_RESP false
@@ -48,7 +49,7 @@
 //#define FPAGE_SIZE_VALID (8224)
 #define FPAGE_SIZE (8192)
 #define FPAGE_SIZE_VALID (8192)
-#define NUM_TAGS 64
+#define NUM_TAGS 128
 
 typedef enum {
 	UNINIT,
@@ -148,6 +149,8 @@ int num_merged=-1;
 int flush_done=-1;
 int num_invalidated;
 
+int cnt_readDone=0;
+
 class FlashIndication: public FlashIndicationWrapper {
 	public:
 		FlashIndication(unsigned int id) : FlashIndicationWrapper(id){}
@@ -198,14 +201,17 @@ class FlashIndication: public FlashIndicationWrapper {
 		virtual void readDone(unsigned int tag) {
 
 			bool readPassed = false;
+
 			if ( verbose_resp ) {
-				fprintf(stderr, "LOG: pagedone: tag=%d; inflight=%d\n", tag, curReadsInFlight );
+				fprintf(stderr, "LOG: pagedone: tag=%d; inflight=%d cnt_readDone=%d\n", tag, curReadsInFlight, cnt_readDone );
 				fflush(stderr);
 			}
 
 			if (readTagTable[tag].checkRead) readPassed = checkReadData(tag);
 
 			pthread_mutex_lock(&flashReqMutex);
+			cnt_readDone = cnt_readDone + 1;
+
 			if ( readTagTable[tag].checkRead && readPassed == false ) {
 				testPassed = false;
 				fprintf(stderr, "LOG: **ERROR: check read data failed @ tag=%d\n",tag);
@@ -221,8 +227,8 @@ class FlashIndication: public FlashIndicationWrapper {
 			}
 
 			readTagTable[tag].busy = false;
-
 			pthread_mutex_unlock(&flashReqMutex);
+
 		}
 
 		virtual void writeDone(unsigned int tag) {
@@ -270,7 +276,8 @@ class FlashIndication: public FlashIndicationWrapper {
 		}
 
 		virtual void debugDumpResp (unsigned int debug0, unsigned int debug1,  unsigned int debug2, unsigned int debug3, unsigned int debug4, unsigned int debug5) {
-			fprintf(stderr, "LOG: DEBUG DUMP: gearSend = %d, gearRec = %d, aurSend = %d, aurRec = %d, readSend=%d, writeSend=%d\n", debug0, debug1, debug2, debug3, debug4, debug5);
+			fprintf(stderr, "LOG: DEBUG DUMP: gearSend = %d, gearRec = %d, aurSend = %d, aurRec = %d, readSend=%d, writeSend=%d, readAck=%d\n"
+					, debug0, debug1, debug2, debug3, debug4, debug5, cnt_readDone);
 		}
 };
 
@@ -623,6 +630,118 @@ int main(int argc, const char **argv)
 	}
 #endif
 
+#if defined(TEST_HEAVY_READ)
+	{
+		srand(time(NULL));
+		verbose_req = false;
+		verbose_resp = true;
+
+		timespec start, now;
+
+		int pageCnt = 2000000; // Max
+		int elapsed;
+		int* randPpa = (int*)malloc(sizeof(int)*pageCnt);
+
+		for (int i = 0; i< pageCnt; i++) {
+			randPpa[i] = rand();
+		}
+
+		// TEST 1
+		clock_gettime(CLOCK_REALTIME, &start);
+		pageCnt = 100000;
+		for (int i = 0; i< pageCnt; i++) {
+			int ppa = randPpa[i];
+			int bus = ppa & 7; //7
+			int chip = (ppa>>3) & 7; //7
+			int page = (ppa>>6) & 0x3F;
+			int blk = (ppa>>14) & 0xFFF;
+			readPage(bus, chip, blk, page, waitIdleReadBuffer(), false);
+		}
+
+		elapsed = 10000;
+
+		while (true) {
+			usleep(100);
+			if (elapsed == 0) {
+				elapsed=10000;
+				device->debugDumpReq(0);
+			}
+			else {
+				elapsed--;
+			}
+			if ( getNumReadsInFlight() == 0 ) break;
+		}
+		fprintf(stderr, "[TEST] READ HEAVY RANDOM VERBOSE DONE! Acks=%d\n", cnt_readDone ); 
+
+		clock_gettime(CLOCK_REALTIME, & now);
+		fprintf(stderr, "SPEED: %f MB/s\n", (8192.0*pageCnt/1000000)/timespec_diff_sec(start,now));
+
+		verbose_resp = false;
+		// TEST 2
+		clock_gettime(CLOCK_REALTIME, &start);
+		pageCnt = 200000;
+		for (int i = 0; i< pageCnt; i++) {
+			int ppa = randPpa[i];
+			int bus = ppa & 2; //7
+			int chip = (ppa>>3) & 3; //7
+			int page = (ppa>>6) & 0x3F;
+			int blk = (ppa>>14) & 0xFFF;
+			readPage(bus, chip, blk, page, waitIdleReadBuffer(), false);
+		}
+
+		elapsed = 10000;
+		while (true) {
+			usleep(100);
+			if (elapsed == 0) {
+				elapsed=10000;
+				device->debugDumpReq(0);
+			}
+			else {
+				elapsed--;
+			}
+			if ( getNumReadsInFlight() == 0 ) break;
+		}
+		fprintf(stderr, "[TEST] READ SAME BUS CHIP DONE! Acks=%d\n", cnt_readDone ); 
+
+		clock_gettime(CLOCK_REALTIME, & now);
+		fprintf(stderr, "SPEED: %f MB/s\n", (8192.0*pageCnt/1000000)/timespec_diff_sec(start,now));
+
+
+		// TEST 3
+		clock_gettime(CLOCK_REALTIME, &start);
+		pageCnt = 2000000;
+		for (int i = 0; i< pageCnt; i++) {
+			int ppa = randPpa[i];
+			int bus = ppa & 7; //7
+			int chip = (ppa>>3) & 7; //7
+			int page = (ppa>>6) & 0x3F;
+			int blk = (ppa>>14) & 0xFFF;
+			readPage(bus, chip, blk, page, waitIdleReadBuffer(), false);
+		}
+
+		elapsed = 10000;
+
+		while (true) {
+			usleep(100);
+			if (elapsed == 0) {
+				elapsed=10000;
+				device->debugDumpReq(0);
+			}
+			else {
+				elapsed--;
+			}
+			if ( getNumReadsInFlight() == 0 ) break;
+		}
+		fprintf(stderr, "[TEST] READ HEAVY RANDOM DONE! Acks=%d\n", cnt_readDone ); 
+
+		clock_gettime(CLOCK_REALTIME, & now);
+		fprintf(stderr, "SPEED: %f MB/s\n", (8192.0*pageCnt/1000000)/timespec_diff_sec(start,now));
+
+
+		free(randPpa);
+	}
+#endif
+
 #if defined(TEST_WRITE_SPEED)
 	{
 		// Read speed test: No printf / No data generation / No data integrity check
@@ -902,11 +1021,12 @@ int main(int argc, const char **argv)
 	const char* pathM[] = {"uniq32_hw.bin", "invalidate_hw.bin", "100_1000_hw.bin"};
 	const char* pathInval[] = {"uniq32_inval_hw.bin", "invalidate_inval_hw.bin", "100_1000_inval_hw.bin"};
 
-	//const int startPpaH[] = {0, 100, 300};
-	//const int startPpaL[] = {1, 200, 400};
-	const int startPpaH[] = {2001, 2101, 2301};
-	const int startPpaL[] = {2002, 2201, 2401};
-	const int startPpaR[] = {30001,30101,31001};
+	const int startPpaH[] = {0, 100, 300};
+	const int startPpaL[] = {1, 200, 400};
+	//const int startPpaH[] = {2001, 2101, 2301};
+	//const int startPpaL[] = {2002, 2201, 2401};
+	const int startPpaR[] = {5000,5100,6000};
+	//const int startPpaR[] = {30001,30101,31001};
 
 	const int numPpaH[] = {1, 41, 100};
 	const int numPpaL[] = {1, 88, 1000};
@@ -1022,7 +1142,8 @@ int main(int argc, const char **argv)
 #if defined(KT_READ_MERGE)
 	{
 		const char* pathM[] = {"uniq32_flash.bin", "invalidate_flash.bin", "100_1000_flash.bin"};
-		const int startPpaR[] = {30001,30101,31001};
+		const int startPpaR[] = {5000,5100,6000};
+		//const int startPpaR[] = {30001,30101,31001};
 
 		const int numPpaR[] = {2, 107, 1099};
 

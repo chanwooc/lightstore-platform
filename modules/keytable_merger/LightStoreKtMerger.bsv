@@ -81,7 +81,6 @@ module mkLightStoreKtMerger #(
 	endrule
 
 	Integer dmaBurstBytes = 128;
-	Integer dmaBurstWords = dmaBurstBytes/wordBytes; //128/16 = 8
 	Integer wordsPer8192Page=8192/wordBytes; // 512
 
 	Reg#(Bit#(10)) ktHighBeatCnt <- mkReg(0);

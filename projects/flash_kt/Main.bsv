@@ -77,21 +77,21 @@ interface FlashIndication;
 // FIXME: indications for testing
 endinterface
 
-typedef 128 DmaBurstBytes; 
+typedef 256 DmaBurstBytes; 
 typedef TLog#(DmaBurstBytes) DmaBurstBytesLog;
 Integer dmaBurstBytesLog = valueOf(DmaBurstBytesLog);
 Integer pageSize8192 = 8192;
 
 // following numbers are skewed due to page size of 8224 from FLASH***
 Integer dmaBurstBytes = valueOf(DmaBurstBytes);
-Integer dmaBurstWords = dmaBurstBytes/wordBytes; //128/16 = 8
-Integer dmaBurstsPerPage = (pageSizeUser+dmaBurstBytes-1)/dmaBurstBytes; //ceiling, 65
+Integer dmaBurstWords = dmaBurstBytes/wordBytes; //128/16 = 8 or 256/16 = 16
+Integer dmaBurstsPerPage = (pageSizeUser+dmaBurstBytes-1)/dmaBurstBytes; //ceiling, 65 or 33
 Integer dmaBurstWordsLast = (pageSizeUser%dmaBurstBytes)/wordBytes; //num bursts in last dma; 2 bursts
 
 // SW uses only 8192 bytes
 Integer wordsPerFlashPage = pageSizeUser/wordBytes; // 8224/16 = 514
 Integer wordsPer8192Page  = pageSize8192/wordBytes; // 8192/16 = 512
-Integer realBurstsPerPage = pageSize8192/dmaBurstBytes; // 64
+Integer realBurstsPerPage = pageSize8192/dmaBurstBytes; // 64 or 32
 
 Integer dmaAllocPageSizeLog = 13; //typically portal alloc page size is 8KB; MUST MATCH SW
 Integer dmaLength = realBurstsPerPage * dmaBurstBytes; // 64 * 128 = 8192
@@ -253,30 +253,20 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Reg#(Bit#(32)) dmaWriteSgid <- mkReg(0);
 
 	FIFO#(Tuple2#(Bit#(WordSz), TagT)) dataFlash2DmaQ <- mkFIFO();
-	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBuf <- replicateM(mkSizedFIFO(dmaBurstWords*2)); 
+	//Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBuf <- replicateM(mkSizedBRAMFIFO(dmaBurstWords*2)); 
+	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBuf <- replicateM(mkSizedBRAMFIFO(dmaBurstWords*8)); 
 	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBufOut <- replicateM(mkFIFO());
 
 	Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) wordPerPageCnts <- replicateM(mkReg(0));
 
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWrReq2RespQ <- replicateM(mkFIFO); 
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWriteReqQ <- replicateM(mkFIFO);
+	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWrReq2RespQ <- replicateM(mkSizedFIFO(4)); 
+	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWriteReqQ <- replicateM(mkSizedFIFO(4));
 	Vector#(NUM_ENG_PORTS, FIFOF#(TagT)) dmaWriteDoneQs <- replicateM(mkFIFOF);
 
 	rule doEnqReadFromFlash;
-		if (delayReg==0) begin
-			let taggedRdata <- hostFlashCtrlUser.readWord();
-			debugReadCnt <= debugReadCnt + 1;
-			if (debugFlag==0) begin
-				dataFlash2DmaQ.enq(taggedRdata);
-			end
-			delayReg <= delayRegSet;
-		end
-		else begin
-			delayReg <= delayReg - 1;
-		end
+		let taggedRdata <- hostFlashCtrlUser.readWord();
+		dataFlash2DmaQ.enq(taggedRdata);
 	endrule
-
-	Reg#(Bit#(3)) dmaWBus <- mkReg(0);
 
 	rule doDistributeReadFromFlash;
 		let taggedRdata = dataFlash2DmaQ.first;
@@ -284,8 +274,6 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		let tag = tpl_2(taggedRdata);
 		let data = tpl_1(taggedRdata);
 		BusT bus = tag2busTable[tag];
-		//let bus = dmaWBus;
-		//dmaWBus <= dmaWBus + 1;
 		dmaWriteBuf[bus].enq(taggedRdata);
 	endrule
 
@@ -368,7 +356,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Vector#(NUM_ENG_PORTS, PipeOut#(TagT)) dmaWriteDonePipes = map(toPipeOut, dmaWriteDoneQs);
 	FunnelPipe#(1, NUM_ENG_PORTS, TagT, 2) readAckFunnel <- mkFunnelPipesPipelined(dmaWriteDonePipes);
 
-	FIFO#(TagT) readAckQ <- mkSizedFIFO(4); 
+	FIFO#(TagT) readAckQ <- mkSizedFIFO(fromInteger(num_tags/2)); 
 	mkConnection(toGet(readAckFunnel[0]), toPut(readAckQ));
 
 	rule sendReadDone;
@@ -579,10 +567,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 	interface FlashRequest request;
 		method Action readPage(Bit#(32) bus, Bit#(32) chip, Bit#(32) block, Bit#(32) page, Bit#(32) tag, Bit#(32) offset);
-			Bit#(6) tag_trunc = truncate(tag);
 			FlashCmd fcmd = FlashCmd{
-				//tag: truncate(tag),
-				tag: zeroExtend(tag_trunc),
+				tag: truncate(tag),
 				op: READ_PAGE,
 				bus: truncate(bus),
 				chip: truncate(chip),
@@ -595,9 +581,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		endmethod
 		
 		method Action writePage(Bit#(32) bus, Bit#(32) chip, Bit#(32) block, Bit#(32) page, Bit#(32) tag, Bit#(32) offset);
-			Bit#(6) tag_trunc = truncate(tag);
 			FlashCmd fcmd = FlashCmd{
-				tag: zeroExtend(tag_trunc),
+				tag: truncate(tag),
 				op: WRITE_PAGE,
 				bus: truncate(bus),
 				chip: truncate(chip),
@@ -610,9 +595,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		endmethod
 
 		method Action eraseBlock(Bit#(32) bus, Bit#(32) chip, Bit#(32) block, Bit#(32) tag);
-			Bit#(6) tag_trunc = truncate(tag);
 			FlashCmd fcmd = FlashCmd{
-				tag: zeroExtend(tag_trunc),
+				tag: truncate(tag),
 				op: ERASE_BLOCK,
 				bus: truncate(bus),
 				chip: truncate(chip),
