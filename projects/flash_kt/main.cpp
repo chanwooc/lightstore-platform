@@ -24,12 +24,12 @@
 // #define TEST_ERASE_ALL		 // eraseAll.exe's only test
 // #define TEST_MINI_FUNCTION
 // #define TEST_READ_SPEED
-#define TEST_HEAVY_READ
+// #define TEST_HEAVY_READ
 // #define TEST_WRITE_SPEED
 // #define KT_WRITE
 // #define KT_READ
-// #define KT_MERGE
-// #define KT_READ_MERGE
+#define KT_MERGE
+#define KT_READ_MERGE
 
 #define DEFAULT_VERBOSE_REQ  false
 #define DEFAULT_VERBOSE_RESP false
@@ -373,7 +373,7 @@ void readPage(uint32_t bus, uint32_t chip, uint32_t block, uint32_t page, uint32
 
 // Use all BUSES & CHIPS in the device
 // Can designate the range of blocks -> incl [blkStart, blkStart + blkCnt) non-incl
-//	 Valid block # range: 0 ~ BLOCKS_PER_CHIP-1 (=4097)
+//	Valid block # range: 0 ~ BLOCKS_PER_CHIP-1 (=4097)
 void testErase(FlashRequestProxy* device, int blkStart, int blkCnt) {
 	// blkEnd can be at most BLOCKS_PER_CHIP-1
 	int blkEnd = blkStart + blkCnt;
@@ -1025,11 +1025,13 @@ int main(int argc, const char **argv)
 	const int startPpaL[] = {1, 200, 400};
 	//const int startPpaH[] = {2001, 2101, 2301};
 	//const int startPpaL[] = {2002, 2201, 2401};
-	const int startPpaR[] = {5000,5100,6000};
+	const int startPpaR[] = {10000,10100,11000};
 	//const int startPpaR[] = {30001,30101,31001};
 
 	const int numPpaH[] = {1, 41, 100};
 	const int numPpaL[] = {1, 88, 1000};
+
+	timespec start, now;
 
 	for (int i = 0; i < 3; i++){
 		unsigned int numTableHigh=numPpaH[i];
@@ -1049,6 +1051,7 @@ int main(int argc, const char **argv)
 		}
 
 		// start Test
+		clock_gettime(CLOCK_REALTIME, &start);
 		fprintf(stderr, "Start PPA: %u %u\n", numTableHigh, numTableLow); 
 		device->startCompaction(numTableHigh, numTableLow);
 
@@ -1070,6 +1073,8 @@ int main(int argc, const char **argv)
 		device->debugDumpReq(0);
 		usleep(100);
 
+		clock_gettime(CLOCK_REALTIME, & now);
+		fprintf(stderr, "MERGE CONSUME SPEED: %f MB/s\n", (8192.0*(numTableHigh+numTableLow)/1000000)/timespec_diff_sec(start,now));
 
 		fprintf(stderr, "Waiting for flush\n"); 
 		fflush(stderr);
@@ -1142,7 +1147,8 @@ int main(int argc, const char **argv)
 #if defined(KT_READ_MERGE)
 	{
 		const char* pathM[] = {"uniq32_flash.bin", "invalidate_flash.bin", "100_1000_flash.bin"};
-		const int startPpaR[] = {5000,5100,6000};
+		//const int startPpaR[] = {5000,5100,6000};
+		const int startPpaR[] = {10000,10100,11000};
 		//const int startPpaR[] = {30001,30101,31001};
 
 		const int numPpaR[] = {2, 107, 1099};
