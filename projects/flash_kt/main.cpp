@@ -190,13 +190,19 @@ class FlashIndication: public FlashIndicationWrapper {
 			pthread_mutex_unlock(&flashReqMutex);
 		}
 
-		virtual void mergeFlushDone(unsigned int num) {
-			fprintf(stderr, "mergeFlushDone: %u \n", num);
+		virtual void mergeFlushDone1(unsigned int num) {
+			fprintf(stderr, "mergeFlushDone1: %u \n", num);
+			fflush(stderr);
+		}
+
+		virtual void mergeFlushDone2(unsigned int num) {
+			fprintf(stderr, "mergeFlushDone2: %u \n", num);
 			fflush(stderr);
 			pthread_mutex_lock(&flashReqMutex);
 			flush_done = 1;
 			pthread_mutex_unlock(&flashReqMutex);
 		}
+
 
 		virtual void readDone(unsigned int tag) {
 

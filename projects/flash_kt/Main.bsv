@@ -61,20 +61,21 @@ interface FlashRequest;
 endinterface
 
 interface FlashIndication;
-//	method Action debug1(Bit#(32) d, Bit#(32) e, Bit#(32) f);
-//	method Action debug2(Bit#(32) d);
-//	method Action debug3(Bit#(32) d, Bit#(32) e);
-
-//	method Action invalPpaDone(Bit#(32) numInvalPpa);
-	method Action mergeDone(Bit#(32) numGenKt, Bit#(32) numInvalAddr, Bit#(64) counter);
-	method Action mergeFlushDone(Bit#(32) num);
-
 	method Action readDone(Bit#(32) tag);
 	method Action writeDone(Bit#(32) tag);
 	method Action eraseDone(Bit#(32) tag, Bit#(32) status);
 	method Action debugDumpResp(Bit#(32) debug0, Bit#(32) debug1, Bit#(32) debug2, Bit#(32) debug3, Bit#(32) debug4, Bit#(32) debug5);
 
+	method Action mergeDone(Bit#(32) numGenKt, Bit#(32) numInvalAddr, Bit#(64) counter);
+	method Action mergeFlushDone1(Bit#(32) num);
+	method Action mergeFlushDone2(Bit#(32) num);
+
 // FIXME: indications for testing
+//	method Action debug1(Bit#(32) d, Bit#(32) e, Bit#(32) f);
+//	method Action debug2(Bit#(32) d);
+//	method Action debug3(Bit#(32) d, Bit#(32) e);
+
+//	method Action invalPpaDone(Bit#(32) numInvalPpa);
 endinterface
 
 typedef 256 DmaBurstBytes; 
@@ -150,7 +151,6 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(mergeRe[0].readServers, wsMerger, flashKtReader.flashReadServers);
 
-
 	FIFO#(Bit#(32)) initKtWrite <- mkFIFO;
 	FIFOF#(Bit#(32)) ktWriteReqDone <- mkFIFOF;
 	FIFO#(Bit#(TLog#(TDiv#(NumTags,2)))) ktWriteTagQ <- mkSizedFIFO(num_tags/2);
@@ -195,6 +195,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 			reqSent <= 0;
 			initKtWrite.deq;
 			ktWriteReqDone.enq(ktsToFlush);
+			indication.mergeFlushDone1(0);
 		end
 		else reqSent <= reqSent + 1;
 
@@ -523,7 +524,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 				if(ktWriteReqDone.notEmpty&&(numKtWritten==ktWriteReqDone.first-1)) begin
 					ktWriteReqDone.deq;
 					numKtWritten <= 0;
-					indication.mergeFlushDone(0);
+					indication.mergeFlushDone2(0);
 				end
 				else begin
 					numKtWritten <= numKtWritten + 1;
