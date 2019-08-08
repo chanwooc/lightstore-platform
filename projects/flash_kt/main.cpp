@@ -24,12 +24,12 @@
 // #define TEST_ERASE_ALL		 // eraseAll.exe's only test
 // #define TEST_MINI_FUNCTION
 // #define TEST_READ_SPEED
-// #define TEST_HEAVY_READ
+#define TEST_HEAVY_READ
 // #define TEST_WRITE_SPEED
 // #define KT_WRITE
 // #define KT_READ
-#define KT_MERGE
-#define KT_READ_MERGE
+// #define KT_MERGE
+// #define KT_READ_MERGE
 
 #define DEFAULT_VERBOSE_REQ  false
 #define DEFAULT_VERBOSE_RESP false
