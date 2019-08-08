@@ -42,7 +42,7 @@ interface KtAddrManager;
 endinterface
 
 module mkKtAddrManager #(
-	Vector#(3, MemReadEngineServer#(DataBusWidth)) rs
+	Vector#(3, MemReadEngineServer#(DataBusWidth)) rsV
 ) (KtAddrManager);
 	// DMA SgId for Flash Addresses (High KT, Low KT) and destination KT Flash Addresses
 	// [0]: High Level, [1]: Low Level, [2]: Merged result
@@ -70,7 +70,7 @@ module mkKtAddrManager #(
 								len:fromInteger(dmaBurstBytes), 
 								burstLen:fromInteger(dmaBurstBytes)
 							};
-			rs[i].request.put(dmaCmd);
+			rsV[i].request.put(dmaCmd);
 
 			if ( ppaReqSent < ((genPpaReq[i].first-1)>>5) /*+1 -1*/ ) begin
 				ppaReqSent <= ppaReqSent + 1;
@@ -93,7 +93,7 @@ module mkKtAddrManager #(
 		FIFOF#(Tuple2#(Bit#(2),Bit#(WordSz))) ppaList4Elem <- mkSizedFIFOF(8); 
 		Reg#(Bit#(8)) ppaRespBeat <- mkReg(0);
 		rule collectPpaResp;
-			let d <- toGet(rs[i].data).get;
+			let d <- toGet(rsV[i].data).get;
 			if (tpl_1(dmaPpaReqToResp.first) == False) begin
 				// Not last request, so receive 8 full beats
 				ppaList4Elem.enq(tuple2(2'b0, d.data));

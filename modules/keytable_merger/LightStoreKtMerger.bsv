@@ -48,19 +48,19 @@ interface LightStoreKtMerger;
 endinterface
 
 module mkLightStoreKtMerger #(
-	Vector#(3, MemReadEngineServer#(DataBusWidth)) rs,
-	Vector#(5, MemWriteEngineServer#(DataBusWidth)) ws,
-	Vector#(2, Server#(DualFlashAddr, Bit#(128))) flashRs
+	Vector#(3, MemReadEngineServer#(DataBusWidth)) rsV,
+	Vector#(5, MemWriteEngineServer#(DataBusWidth)) wsV,
+	Vector#(2, Server#(DualFlashAddr, Bit#(128))) flashRsV
 ) (LightStoreKtMerger);
 
-	KtAddrManager addrManager <- mkKtAddrManager(rs);
+	KtAddrManager addrManager <- mkKtAddrManager(rsV);
 	KeytableMerger ktMerger <- mkKeytableMerger;
 
 	Reg#(Bit#(32)) mergedKtBufSgid <- mkReg(0);
 	Reg#(Bit#(32)) invalPPAListSgid <- mkReg(0);
 
-	let flashRsHigh = flashRs[1];
-	let flashRsLow = flashRs[0];
+	let flashRsHigh = flashRsV[1];
+	let flashRsLow = flashRsV[0];
 
 	// FIXME: below are FIFOs for testing
 	//FIFOF#(Tuple5#(Bit#(32), Bit#(32), Bit#(32), Bit#(32), Bit#(32))) genFlashRead <- mkFIFOF;
@@ -210,7 +210,7 @@ module mkLightStoreKtMerger #(
 			len: fromInteger(dmaBurstBytes),
 			burstLen: fromInteger(dmaBurstBytes)
 		};
-		ws[4].request.put(dmaCmd);
+		wsV[4].request.put(dmaCmd);
 
 		dmaPpaWReqToRespQ.enq(?);
 
@@ -219,13 +219,13 @@ module mkLightStoreKtMerger #(
 
 	rule sendPpaDmaData;
 		let d <- toGet(dmaPpaWriteOut).get;
-		ws[4].data.enq(d);
+		wsV[4].data.enq(d);
 	endrule
 
 	Reg#(Bit#(32)) ppaOutDmaRespRecv <- mkReg(0);
 	rule ppaDmaGetResponse;
 		dmaPpaWReqToRespQ.deq;
-		let dummy <- ws[4].done.get;
+		let dummy <- wsV[4].done.get;
 		ppaOutDmaRespRecv <= ppaOutDmaRespRecv + 1;
 	endrule
 
@@ -289,7 +289,7 @@ module mkLightStoreKtMerger #(
 			len: fromInteger(keytableBytes),
 			burstLen: fromInteger(dmaBurstBytes)
 		};
-		ws[phase2].request.put(dmaCmd);
+		wsV[phase2].request.put(dmaCmd);
 
 		dmaWriteReqToRespQ[phase2].enq(False);
 
@@ -319,7 +319,7 @@ module mkLightStoreKtMerger #(
 		rule sendDmaWriteData;
 			dmaWriteOut[i].deq;
 			let d = dmaWriteOut[i].first;
-			ws[i].data.enq(tpl_2(d));
+			wsV[i].data.enq(tpl_2(d));
 		endrule
 	end
 
@@ -336,7 +336,7 @@ module mkLightStoreKtMerger #(
 		rule dmaWriteGetResponse;
 			dmaWriteReqToRespQ[i].deq;
 			if (!dmaWriteReqToRespQ[i].first) begin
-				let dummy <- ws[i].done.get;
+				let dummy <- wsV[i].done.get;
 				ktGenerated <= ktGenerated + 1;
 
 				if (i==0) begin

@@ -146,10 +146,10 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Vector#(TSub#(NumReadClients,`NumReFlash), MemReadEngine#(DataBusWidth, DataBusWidth, 2, 3)) mergeRe <- replicateM(mkMemReadEngine);
 	Vector#(TSub#(NumWriteClients, `NumWeFlash), MemWriteEngine#(DataBusWidth, DataBusWidth,  1, 1)) mergeWe <- replicateM(mkMemWriteEngine);
 
-	Vector#(5, MemWriteEngineServer#(DataBusWidth)) wsMerger;
-	wsMerger = vec(mergeWe[0].writeServers[0], mergeWe[1].writeServers[0], mergeWe[2].writeServers[0], mergeWe[3].writeServers[0], mergeWe[4].writeServers[0]);
+	Vector#(5, MemWriteEngineServer#(DataBusWidth)) mergerWsV;
+	mergerWsV = vec(mergeWe[0].writeServers[0], mergeWe[1].writeServers[0], mergeWe[2].writeServers[0], mergeWe[3].writeServers[0], mergeWe[4].writeServers[0]);
 
-	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(mergeRe[0].readServers, wsMerger, flashKtReader.flashReadServers);
+	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(mergeRe[0].readServers, mergerWsV, flashKtReader.flashReadServers);
 
 	FIFO#(Bit#(32)) initKtWrite <- mkFIFO;
 	FIFOF#(Bit#(32)) ktWriteReqDone <- mkFIFOF;

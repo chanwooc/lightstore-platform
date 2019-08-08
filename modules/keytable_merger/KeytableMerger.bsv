@@ -144,7 +144,7 @@ module mkKeytableMerger (KeytableMerger ifc);
 				end
 			end
 			else if (keytableInBeat[i] < fromInteger(keytableWords)) begin // Keytable body
-				if (keytableInBeat[i] < (lastEntOffset >> fromInteger(log2(wordBytes)))
+				if (keytableInBeat[i] < (lastEntOffset >> fromInteger(log2(wordBytes))))
 					ktEntryStream[i].enq(w);
 
 				if (keytableInBeat[i] == fromInteger(keytableWords-1)) begin
