@@ -95,7 +95,7 @@ module mkKeytableMerger (KeytableMerger ifc);
 	Vector#(2, FIFOF#(Bit#(WordSz))) keytableIn <- replicateM(mkFIFOF);
 
 	// Vector#(2, FIFOF#(Bit#(WordSz))) ktEntryIn <- replicateM(mkFIFOF);
-	Vector#(2, FIFOF#(Bit#(WordSz))) ktEntryStream <- replicateM(mkFIFOF);
+	Vector#(2, FIFOF#(Bit#(WordSz))) ktEntryStream <- replicateM(mkFIFOF); // TODO: Sized??
 	Vector#(2, FIFOF#(Maybe#(Bit#(5)))) ktBeatCntStream <- replicateM(mkFIFOF);
 
 	FIFOF#(Bit#(WordSz)) newEntryBuf <- mkSizedBRAMFIFOF(keytableWords); // KeytableWords-ktHeaderWords
@@ -132,17 +132,19 @@ module mkKeytableMerger (KeytableMerger ifc);
 					numEnt <= headerEntries[0];
 
 					let idxOffset = headerEntries[0]+1;
-					if(idxOffset < 8) begin
-						lastEntOffset <= headerEntries[idxOffset[2:0]];
+					if(idxOffset < fromInteger(wordHeaderElems)) begin // idx 0-7 are in the first beat
+						Bit#(TLog#(WordHeaderElems)) idx = truncate(idxOffset);
+						lastEntOffset <= headerEntries[idx];
 					end
 				end
-				else if (keytableInBeat[i]==((numEnt+1)>>3)) begin
+				else if (keytableInBeat[i]==((numEnt+1) >> fromInteger(log2(wordHeaderElems)))) begin
 					let idxOffset = numEnt + 1;
-					lastEntOffset <= headerEntries[idxOffset[2:0]];
+					Bit#(TLog#(WordHeaderElems)) idx = truncate(idxOffset);
+					lastEntOffset <= headerEntries[idx];
 				end
 			end
 			else if (keytableInBeat[i] < fromInteger(keytableWords)) begin // Keytable body
-				if (keytableInBeat[i] < (lastEntOffset >> 4))
+				if (keytableInBeat[i] < (lastEntOffset >> fromInteger(log2(wordBytes)))
 					ktEntryStream[i].enq(w);
 
 				if (keytableInBeat[i] == fromInteger(keytableWords-1)) begin
@@ -163,7 +165,7 @@ module mkKeytableMerger (KeytableMerger ifc);
 				let entries = hdrParserBuf[0].first;
 				numKtEntries <= (entries>510)?510:entries; // Max # entry = 510
 
-				prevOffset <= 1024; // hdrParserBuf[1].first is always 1024
+				prevOffset <= 1024; // hdrParserBuf[1].first is always 1024 and we are not checking
 
 				hdrParserBuf[0].deq;
 				hdrParserBuf[1].deq;
@@ -325,6 +327,9 @@ module mkKeytableMerger (KeytableMerger ifc);
 				mergedSizeInfo.enq(tagged Valid curEntSzInBeats);
 			end
 			else begin
+				// TODO: Currently, these are done in l_flushEntry.. can move back here
+				//l_ktBeatCntStream.deq;
+				//mergedSizeInfo.enq(tagged Valid curEntSzInBeats);
 				curMStatus <= LOW_FLUSH;
 				l_entryBeatSent <= 1;
 			end
@@ -488,7 +493,7 @@ module mkKeytableMerger (KeytableMerger ifc);
 	Reg#(Bit#(16)) ktOffset <- mkReg(0);
 
 	FIFOF#(Bit#(WordSz)) newHeaderBuf <- mkSizedBRAMFIFOF(ktHeaderWords);
-	FIFOF#(Tuple4#(Bool,Bit#(16), Bit#(16), Bit#(16))) newKtTrig <- mkFIFOF;
+	FIFOF#(Tuple4#(Bool, Bit#(16), Bit#(16), Bit#(16))) newKtTrig <- mkFIFOF;
 
 	rule newHeader;
 		Bit#(16) sizeInByte = zeroExtend(fromMaybe(?, mergedSizeInfo.first)) << 4 ;

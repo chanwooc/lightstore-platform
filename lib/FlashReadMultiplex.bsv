@@ -14,7 +14,7 @@ typedef 32 ReqPerUser;
 interface FlashReadMultiplex#(numeric type nUsers, numeric type nSwitches);
 	// in-order request/response per channel
 	interface Vector#(nUsers, Server#(DualFlashAddr, Bit#(128))) flashReadServers;
-	
+
 	// flash client flash controllers (# Card)
 	interface Vector#(nSwitches, FlashCtrlClient) flashClient; // We only have 1 Card; Connects to FlashSwitch0
 endinterface
@@ -24,7 +24,7 @@ Bool verbose = False;
 module mkFlashReadMultiplex(FlashReadMultiplex#(nUsers, nSwitches)) provisos (Add#(a__, TLog#(nUsers), 7));
 
 	Vector#(nSwitches, FIFO#(FlashCmd)) flashReqQs <- replicateM(mkFIFO);
-	
+
 	// bus Inorder buffers
 	//Vector#(nSwitches, Vector#(8, FIFOF#(Bit#(128)))) busPageBufs <- replicateM(replicateM(mkSizedBRAMFIFOF(pageWords))); // 8224
 
@@ -74,7 +74,6 @@ module mkFlashReadMultiplex(FlashReadMultiplex#(nUsers, nSwitches)) provisos (Ad
 		endrule
 	end
 
-	//Vector#(nUsers, Vector#(ReqPerUser, Reg#(BusT))) tagBusTable <- replicateM(replicateM(mkReg(0)));
 	function Server#(DualFlashAddr, Bit#(128)) genFlashReadServers(Integer i);
 		return (interface Server#(DualFlashAddr, Bit#(128));
 					interface Put request;
@@ -88,7 +87,6 @@ module mkFlashReadMultiplex(FlashReadMultiplex#(nUsers, nSwitches)) provisos (Ad
 															block: extend(req.block),
 															page: extend(req.page)});
 							outstandingReqQ[i].enq(tuple2(req.card, reqTag));
-							//tagBusTable[i][reqTag] <= req.bus;
 						  endmethod
 					endinterface
 					interface Get response = toGet(pageRespQs[i]);
@@ -106,7 +104,6 @@ module mkFlashReadMultiplex(FlashReadMultiplex#(nUsers, nSwitches)) provisos (Ad
 						let {data, tag} = taggedData;
 						Bit#(TLog#(ReqPerUser)) reqTag = truncate(tag);
 						Bit#(TLog#(nUsers)) serverSelect = truncate(tag>>valueOf(TLog#(ReqPerUser)));
-						//let bus = tagBusTable[serverSelect][reqTag];
 						//busPageBufs[i][bus].enq(data);
 						reorderBufs[serverSelect][i][reqTag].enq(data);
 					endmethod
@@ -117,12 +114,12 @@ module mkFlashReadMultiplex(FlashReadMultiplex#(nUsers, nSwitches)) provisos (Ad
 						return ?;
 					endmethod
 					method Action writeDataReq(TagT tag) if (False); 
-						  $display("Error:: (%m) writeDataReq flash port of %d should not be used!", i);
-						  $finish;
+						$display("Error:: (%m) writeDataReq flash port of %d should not be used!", i);
+						$finish;
 					endmethod
 					method Action ackStatus (Tuple2#(TagT, StatusT) taggedStatus) if (False); 
-						  $display("Error:: (%m) ackStatus flash port of %d should not be used!", i);
-						  $finish;
+						$display("Error:: (%m) ackStatus flash port of %d should not be used!", i);
+						$finish;
 					endmethod
 				endinterface);
 	endfunction
