@@ -884,7 +884,7 @@ int main(int argc, const char **argv)
 		const int numPpaH[] = {1, 41, 100};
 		const int numPpaL[] = {1, 88, 1000};
 
-		for (int ii=0; ii<1; ii++){
+		for (int ii=0; ii<3; ii++){
 			FILE *h_fp = fopen(pathH[ii], "rb");
 			FILE *l_fp = fopen(pathL[ii], "rb");
 
@@ -1032,6 +1032,7 @@ int main(int argc, const char **argv)
 	//const int startPpaH[] = {2001, 2101, 2301};
 	//const int startPpaL[] = {2002, 2201, 2401};
 	const int startPpaR[] = {10000,10100,11000};
+	//const int startPpaR[] = {12000,12100,13000};
 	//const int startPpaR[] = {30001,30101,31001};
 
 	const int numPpaH[] = {1, 41, 100};

@@ -95,7 +95,7 @@ module mkKeytableMerger (KeytableMerger ifc);
 	Vector#(2, FIFOF#(Bit#(WordSz))) keytableIn <- replicateM(mkFIFOF);
 
 	// Vector#(2, FIFOF#(Bit#(WordSz))) ktEntryIn <- replicateM(mkFIFOF);
-	Vector#(2, FIFOF#(Bit#(WordSz))) ktEntryStream <- replicateM(mkFIFOF); // TODO: Sized??
+	Vector#(2, FIFOF#(Bit#(WordSz))) ktEntryStream <- replicateM(mkFIFOF);
 	Vector#(2, FIFOF#(Maybe#(Bit#(5)))) ktBeatCntStream <- replicateM(mkFIFOF);
 
 	FIFOF#(Bit#(WordSz)) newEntryBuf <- mkSizedBRAMFIFOF(keytableWords); // KeytableWords-ktHeaderWords
@@ -132,19 +132,17 @@ module mkKeytableMerger (KeytableMerger ifc);
 					numEnt <= headerEntries[0];
 
 					let idxOffset = headerEntries[0]+1;
-					if(idxOffset < fromInteger(wordHeaderElems)) begin // idx 0-7 are in the first beat
-						Bit#(TLog#(WordHeaderElems)) idx = truncate(idxOffset);
-						lastEntOffset <= headerEntries[idx];
+					if(idxOffset < 8) begin
+						lastEntOffset <= headerEntries[idxOffset[2:0]];
 					end
 				end
-				else if (keytableInBeat[i]==((numEnt+1) >> fromInteger(log2(wordHeaderElems)))) begin
+				else if (keytableInBeat[i]==((numEnt+1)>>3)) begin
 					let idxOffset = numEnt + 1;
-					Bit#(TLog#(WordHeaderElems)) idx = truncate(idxOffset);
-					lastEntOffset <= headerEntries[idx];
+					lastEntOffset <= headerEntries[idxOffset[2:0]];
 				end
 			end
 			else if (keytableInBeat[i] < fromInteger(keytableWords)) begin // Keytable body
-				if (keytableInBeat[i] < (lastEntOffset >> fromInteger(log2(wordBytes))))
+				if (keytableInBeat[i] < (lastEntOffset >> 4))
 					ktEntryStream[i].enq(w);
 
 				if (keytableInBeat[i] == fromInteger(keytableWords-1)) begin
@@ -165,7 +163,7 @@ module mkKeytableMerger (KeytableMerger ifc);
 				let entries = hdrParserBuf[0].first;
 				numKtEntries <= (entries>510)?510:entries; // Max # entry = 510
 
-				prevOffset <= 1024; // hdrParserBuf[1].first is always 1024 and we are not checking
+				prevOffset <= 1024; // hdrParserBuf[1].first is always 1024
 
 				hdrParserBuf[0].deq;
 				hdrParserBuf[1].deq;
