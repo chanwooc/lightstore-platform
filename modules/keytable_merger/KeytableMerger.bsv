@@ -75,7 +75,7 @@ function CompResult compareByteString(Bit#(128) a, Bit#(128) b);
 	else return LT;
 endfunction
 
-typedef enum { DECISION, HIGH_FLUSH, LOW_FLUSH } MStatus deriving (Bits, Eq);
+typedef enum { DECISION, PROC_EQ, HIGH_FLUSH, LOW_FLUSH } MStatus deriving (Bits, Eq);
 
 
 (* synthesize *)
@@ -325,9 +325,6 @@ module mkKeytableMerger (KeytableMerger ifc);
 				mergedSizeInfo.enq(tagged Valid curEntSzInBeats);
 			end
 			else begin
-				// TODO: Currently, these are done in l_flushEntry.. can move back here
-				//l_ktBeatCntStream.deq;
-				//mergedSizeInfo.enq(tagged Valid curEntSzInBeats);
 				curMStatus <= LOW_FLUSH;
 				l_entryBeatSent <= 1;
 			end
@@ -353,87 +350,60 @@ module mkKeytableMerger (KeytableMerger ifc);
 			end
 		end
 		else if (res == EQ) begin // EQ
-			let h_curEntSzInBeats = fromMaybe(?, h_ktBeatCntStream.first);
-			let l_curEntSzInBeats = fromMaybe(?, l_ktBeatCntStream.first);
+			curMStatus <= PROC_EQ;
+		end
+	endrule
 
-			Bool h_moreBeat = ( h_curEntSzInBeats - zeroExtend(decPhaseCnt) ) > 1 ;
-			Bool l_moreBeat = ( l_curEntSzInBeats - zeroExtend(decPhaseCnt) ) > 1 ;
+	// Additional resources to relieve timing..
+	rule procEq (curMStatus == PROC_EQ);
+		let h_curEntSzInBeats = fromMaybe(?, h_ktBeatCntStream.first);
+		let l_curEntSzInBeats = fromMaybe(?, l_ktBeatCntStream.first);
 
-			if ( h_moreBeat && l_moreBeat ) begin // check next word
-				decPhaseCnt <= decPhaseCnt + 1;
+		Bool h_moreBeat = ( h_curEntSzInBeats - zeroExtend(decPhaseCnt) ) > 1 ;
+		Bool l_moreBeat = ( l_curEntSzInBeats - zeroExtend(decPhaseCnt) ) > 1 ;
 
-				if(!isValid(h_entryBuf[decPhaseCnt])) begin
-					h_ktEntryStream.deq;
-					h_entryBuf[decPhaseCnt] <= tagged Valid h_ktEntryStream.first;
-				end
 
+		if ( h_moreBeat && l_moreBeat ) begin // check next word
+			curMStatus <= DECISION;
+			decPhaseCnt <= decPhaseCnt + 1;
+
+			if(!isValid(h_entryBuf[decPhaseCnt])) begin
+				h_ktEntryStream.deq;
+				h_entryBuf[decPhaseCnt] <= tagged Valid h_ktEntryStream.first;
+			end
+
+			if(!isValid(l_entryBuf[decPhaseCnt])) begin
+				l_ktEntryStream.deq;
+				l_entryBuf[decPhaseCnt] <= tagged Valid l_ktEntryStream.first;
+			end
+		end
+		else if ( h_moreBeat && !l_moreBeat) begin // low level is smaller
+			curMStatus <= LOW_FLUSH;
+			decPhaseCnt <= 0;
+		end
+		else if (!h_moreBeat) begin // high level is smaller or Equal
+			curMStatus <= HIGH_FLUSH;
+			decPhaseCnt <= 0;
+
+			if ( !l_moreBeat ) begin // EQUAL
+				// remove low level entry @ [1]
+				// Collect addresses for GC here
 				if(!isValid(l_entryBuf[decPhaseCnt])) begin
 					l_ktEntryStream.deq;
-					l_entryBuf[decPhaseCnt] <= tagged Valid l_ktEntryStream.first;
 				end
-			end
-			else if ( h_moreBeat && !l_moreBeat) begin // low level is smaller
-				decPhaseCnt <= 0;
+				l_ktBeatCntStream.deq;
+				writeVReg(l_entryBuf, replicate(tagged Invalid));
 
-				if(isValid(l_entryBuf[0])) begin
-					newEntryBuf.enq(fromMaybe(?, l_entryBuf[0]));
-					l_entryBuf[0] <= tagged Invalid;
-				end
-				else begin
-					newEntryBuf.enq(l_ktEntryStream.first);
-					l_ktEntryStream.deq;
-				end
-
-				if (l_curEntSzInBeats == 1) begin
-					l_ktBeatCntStream.deq;
-					mergedSizeInfo.enq(tagged Valid l_curEntSzInBeats);
-				end
-				else begin
-					curMStatus <= LOW_FLUSH;
-					l_entryBeatSent <= 1;
-				end
-			end
-			else if (!h_moreBeat) begin // high level is smaller or Equal
-				decPhaseCnt <= 0;
-
-				if(isValid(h_entryBuf[0])) begin
-					newEntryBuf.enq(fromMaybe(?, h_entryBuf[0]));
-					h_entryBuf[0] <= tagged Invalid;
-				end
-				else begin
-					newEntryBuf.enq(h_ktEntryStream.first);
-					h_ktEntryStream.deq;
-				end
-
-				if (h_curEntSzInBeats == 1) begin
-					h_ktBeatCntStream.deq;
-					mergedSizeInfo.enq(tagged Valid h_curEntSzInBeats);
-				end
-				else begin
-					curMStatus <= HIGH_FLUSH;
-					h_entryBeatSent <= 1;
-				end
-
-				if ( !l_moreBeat ) begin // EQUAL
-					// remove low level entry @ [1]
-					// Collect addresses for GC here
-					if(!isValid(l_entryBuf[decPhaseCnt])) begin
-						l_ktEntryStream.deq;
+				if(collectedAddrQ.notFull) begin // if full, just drop (OKAY to drop i guess...)
+					if(isValid(l_entryBuf[0])) begin
+						collectedAddrQ.enq(tagged Valid truncate(fromMaybe(?, l_entryBuf[0])));
 					end
-					l_ktBeatCntStream.deq;
-					writeVReg(l_entryBuf, replicate(tagged Invalid));
-
-					if(collectedAddrQ.notFull) begin // if full, just drop (OKAY to drop i guess...)
-						if(isValid(l_entryBuf[0])) begin
-							collectedAddrQ.enq(tagged Valid truncate(fromMaybe(?, l_entryBuf[0])));
-						end
-						else begin
-							collectedAddrQ.enq(tagged Valid truncate(l_ktEntryStream.first));
-						end
+					else begin
+						collectedAddrQ.enq(tagged Valid truncate(l_ktEntryStream.first));
 					end
 				end
-				else begin
-				end
+			end
+			else begin
 			end
 		end
 	endrule
@@ -491,7 +461,7 @@ module mkKeytableMerger (KeytableMerger ifc);
 	Reg#(Bit#(16)) ktOffset <- mkReg(0);
 
 	FIFOF#(Bit#(WordSz)) newHeaderBuf <- mkSizedBRAMFIFOF(ktHeaderWords);
-	FIFOF#(Tuple4#(Bool, Bit#(16), Bit#(16), Bit#(16))) newKtTrig <- mkFIFOF;
+	FIFOF#(Tuple4#(Bool,Bit#(16), Bit#(16), Bit#(16))) newKtTrig <- mkFIFOF;
 
 	rule newHeader;
 		Bit#(16) sizeInByte = zeroExtend(fromMaybe(?, mergedSizeInfo.first)) << 4 ;

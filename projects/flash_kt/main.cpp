@@ -151,6 +151,8 @@ int num_invalidated;
 
 int cnt_readDone=0;
 
+char *testBuf;
+
 class FlashIndication: public FlashIndicationWrapper {
 	public:
 		FlashIndication(unsigned int id) : FlashIndicationWrapper(id){}
@@ -210,8 +212,10 @@ class FlashIndication: public FlashIndicationWrapper {
 
 			if ( verbose_resp ) {
 				fprintf(stderr, "LOG: pagedone: tag=%d; inflight=%d cnt_readDone=%d\n", tag, curReadsInFlight, cnt_readDone );
-				fflush(stderr);
+				memcpy(testBuf, readBuffers[tag], 8192);
+				usleep(100);
 			}
+			fflush(stderr);
 
 			if (readTagTable[tag].checkRead) readPassed = checkReadData(tag);
 
@@ -652,6 +656,8 @@ int main(int argc, const char **argv)
 			randPpa[i] = rand();
 		}
 
+		testBuf = (char*)malloc(8192);
+
 		// TEST 1
 		clock_gettime(CLOCK_REALTIME, &start);
 		pageCnt = 100000;
@@ -677,7 +683,13 @@ int main(int argc, const char **argv)
 			}
 			if ( getNumReadsInFlight() == 0 ) break;
 		}
-		fprintf(stderr, "[TEST] READ HEAVY RANDOM VERBOSE DONE! Acks=%d\n", cnt_readDone ); 
+		fprintf(stderr, "[TEST] READ HEAVY RANDOM VERBOSE + MEMCOPY DONE! Acks=%d\n", cnt_readDone ); 
+
+		int count =0;
+		for (int j = 0; j < 8192; j++) {
+			if(testBuf[j]) count++;
+		}
+		fprintf(stderr, "[TEST] READ HEAVY RANDOM VERBOSE Memcpy check: (doesn't mean anything.)%d\n", count ); 
 
 		clock_gettime(CLOCK_REALTIME, & now);
 		fprintf(stderr, "SPEED: %f MB/s\n", (8192.0*pageCnt/1000000)/timespec_diff_sec(start,now));

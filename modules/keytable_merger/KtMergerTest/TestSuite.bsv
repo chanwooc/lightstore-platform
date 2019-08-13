@@ -76,7 +76,7 @@ module mkTest(Empty);
 	endrule
 
 	rule printCollectedAddr;
-		let addr <- merger.getCollectedAddr();
+		let addr <- merger.getInvalidatedAddr();
 		//$display("%x", addr);
 	endrule
 endmodule
