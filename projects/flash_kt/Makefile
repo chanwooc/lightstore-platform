@@ -23,6 +23,7 @@ NUM_RENGINE_FLASH=2 # Flash Write (DMA Read)
 NUM_WENGINE_FLASH=4 # Flash Read  (DMA Write)
 
 # Connectal Main Clock: 175 MHz, T=5.714
+# Connectal Main Clock: 200 MHz --> realmainclockpreiod=5 (Current)
 # Derived clock for Aurora Init Clock (110 MHz, T=9.090)
 CONNECTALFLAGS += -D DataBusWidth=128
 CONNECTALFLAGS += -D NumReadClients=$(NUMBER_OF_RENGINES) -D NumWriteClients=$(NUMBER_OF_WENGINES)

@@ -134,11 +134,11 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	FlashSwitch#(3) flashSwitch <- mkFlashSwitch; // users[1] for normal IO & users[0,2] for kt-merging
 	mkConnection(flashSwitch.flashCtrlClient, flashCtrl.user);
 
-	FlashCtrlUser ktWriteUser = flashSwitch.users[1];
+	FlashCtrlUser ktWriteUser = flashSwitch.users[0];
 	FlashCtrlUser hostFlashCtrlUser = flashSwitch.users[2];
 
 	FlashReadMultiplex#(2, 1) flashKtReader <- mkFlashReadMultiplex;
-	mkConnection(flashKtReader.flashClient[0], flashSwitch.users[0]);
+	mkConnection(flashKtReader.flashClient[0], flashSwitch.users[1]);
 
 	//--------------------------------------------
 	// LightStore Compaction Accelerator & DMA Engine
@@ -147,7 +147,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Vector#(TSub#(NumWriteClients, `NumWeFlash), MemWriteEngine#(DataBusWidth, DataBusWidth,  1, 2)) mergeWe <- replicateM(mkMemWriteEngine);
 
 	Vector#(5, MemWriteEngineServer#(DataBusWidth)) mergerWsV;
-	mergerWsV = vec(mergeWe[0].writeServers[0], mergeWe[1].writeServers[0], mergeWe[2].writeServers[0], mergeWe[3].writeServers[0], mergeWe[0].writeServers[1]);
+	mergerWsV = vec(mergeWe[0].writeServers[0], mergeWe[1].writeServers[0], mergeWe[2].writeServers[0], mergeWe[3].writeServers[0], mergeWe[3].writeServers[1]);
 
 	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(mergeRe[0].readServers, mergerWsV, flashKtReader.flashReadServers);
 
@@ -254,8 +254,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Reg#(Bit#(32)) dmaWriteSgid <- mkReg(0);
 
 	FIFO#(Tuple2#(Bit#(WordSz), TagT)) dataFlash2DmaQ <- mkFIFO();
-	//Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBuf <- replicateM(mkSizedBRAMFIFO(dmaBurstWords*2)); 
-	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBuf <- replicateM(mkSizedBRAMFIFO(wordsPerFlashPage*2)); 
+	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBuf <- replicateM(mkSizedBRAMFIFO(dmaBurstWords*4)); 
 	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBufOut <- replicateM(mkFIFO());
 
 	Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) wordPerPageCnts <- replicateM(mkReg(0));
@@ -358,7 +357,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Vector#(NUM_ENG_PORTS, PipeOut#(TagT)) dmaWriteDonePipes = map(toPipeOut, dmaWriteDoneQs);
 	FunnelPipe#(1, NUM_ENG_PORTS, TagT, 2) readAckFunnel <- mkFunnelPipesPipelined(dmaWriteDonePipes);
 
-	FIFO#(TagT) readAckQ <- mkSizedFIFO(num_tags/2); 
+	FIFO#(TagT) readAckQ <- mkSizedFIFO(8); 
 	mkConnection(toGet(readAckFunnel[0]), toPut(readAckQ));
 
 	rule sendReadDone;

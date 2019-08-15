@@ -146,7 +146,8 @@ bool checkReadData(int tag) {
 }
 
 int num_merged=-1;
-int flush_done=-1;
+int flush_done1=-1;
+int flush_done2=-1;
 int num_invalidated;
 
 int cnt_readDone=0;
@@ -195,13 +196,16 @@ class FlashIndication: public FlashIndicationWrapper {
 		virtual void mergeFlushDone1(unsigned int num) {
 			fprintf(stderr, "mergeFlushDone1: %u \n", num);
 			fflush(stderr);
+			pthread_mutex_lock(&flashReqMutex);
+			flush_done1 = 1;
+			pthread_mutex_unlock(&flashReqMutex);
 		}
 
 		virtual void mergeFlushDone2(unsigned int num) {
 			fprintf(stderr, "mergeFlushDone2: %u \n", num);
 			fflush(stderr);
 			pthread_mutex_lock(&flashReqMutex);
-			flush_done = 1;
+			flush_done2 = 1;
 			pthread_mutex_unlock(&flashReqMutex);
 		}
 
@@ -1043,9 +1047,11 @@ int main(int argc, const char **argv)
 	const int startPpaL[] = {1, 200, 400};
 	//const int startPpaH[] = {2001, 2101, 2301};
 	//const int startPpaL[] = {2002, 2201, 2401};
-	const int startPpaR[] = {10000,10100,11000};
+
+	//const int startPpaR[] = {10000,10100,11000};
 	//const int startPpaR[] = {12000,12100,13000};
 	//const int startPpaR[] = {30001,30101,31001};
+	const int startPpaR[] = {130001,130101,131001};
 
 	const int numPpaH[] = {1, 41, 100};
 	const int numPpaL[] = {1, 88, 1000};
@@ -1055,7 +1061,8 @@ int main(int argc, const char **argv)
 	for (int i = 0; i < 3; i++){
 		unsigned int numTableHigh=numPpaH[i];
 		num_merged = -1;
-		flush_done = -1;
+		flush_done1 = -1;
+		flush_done2 = -1;
 		for (unsigned int t=0; t < numTableHigh; t++) {
 			highPpaBuf[t] = startPpaH[i]+t;
 		}
@@ -1093,7 +1100,7 @@ int main(int argc, const char **argv)
 		usleep(100);
 
 		clock_gettime(CLOCK_REALTIME, & now);
-		fprintf(stderr, "MERGE CONSUME SPEED: %f MB/s\n", (8192.0*(numTableHigh+numTableLow)/1000000)/timespec_diff_sec(start,now));
+		fprintf(stderr, "MERGE SPEED1: %f MB/s\n", (8192.0*(numTableHigh+numTableLow)/1000000)/timespec_diff_sec(start,now));
 
 		fprintf(stderr, "Waiting for flush\n"); 
 		fflush(stderr);
@@ -1107,16 +1114,19 @@ int main(int argc, const char **argv)
 			else {
 				elapsed--;
 			}
-			if ( flush_done != -1 ) break;
+			if ( flush_done1 != -1 || flush_done2 != -1 ) break;
 		}
+
+		clock_gettime(CLOCK_REALTIME, & now);
+		fprintf(stderr, "MERGE SPEED2: %f MB/s\n", (8192.0*(numTableHigh+numTableLow)/1000000)/timespec_diff_sec(start,now));
 
 		fflush(stderr);
 
+		device->debugDumpReq(0);
+		device->debugDumpReq(0);
+
+		sleep(1);
 		fprintf(stderr, "Dumping results..\n"); 
-		device->debugDumpReq(0);
-		device->debugDumpReq(0);
-		usleep(1000);
-		usleep(1000);
 
 		// output data
 		FILE *fp = fopen(pathM[i], "wb");
@@ -1166,9 +1176,10 @@ int main(int argc, const char **argv)
 #if defined(KT_READ_MERGE)
 	{
 		const char* pathM[] = {"uniq32_flash.bin", "invalidate_flash.bin", "100_1000_flash.bin"};
-		//const int startPpaR[] = {5000,5100,6000};
 		const int startPpaR[] = {10000,10100,11000};
+		//const int startPpaR[] = {12000,12100,13000};
 		//const int startPpaR[] = {30001,30101,31001};
+		//const int startPpaR[] = {130001,130101,131001};
 
 		const int numPpaR[] = {2, 107, 1099};
 
