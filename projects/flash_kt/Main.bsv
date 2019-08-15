@@ -134,11 +134,11 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	FlashSwitch#(3) flashSwitch <- mkFlashSwitch; // users[1] for normal IO & users[0,2] for kt-merging
 	mkConnection(flashSwitch.flashCtrlClient, flashCtrl.user);
 
-	FlashCtrlUser ktWriteUser = flashSwitch.users[0];
+	FlashCtrlUser ktWriteUser = flashSwitch.users[1];
 	FlashCtrlUser hostFlashCtrlUser = flashSwitch.users[2];
 
 	FlashReadMultiplex#(2, 1) flashKtReader <- mkFlashReadMultiplex;
-	mkConnection(flashKtReader.flashClient[0], flashSwitch.users[1]);
+	mkConnection(flashKtReader.flashClient[0], flashSwitch.users[0]);
 
 	//--------------------------------------------
 	// LightStore Compaction Accelerator & DMA Engine
