@@ -42,16 +42,19 @@ module mkFlashSwitch(FlashSwitch#(n)) provisos(
 	FIFO#(FlashCmd) cmdOutputQ <- mkFIFO();
 	FIFO#(Tuple2#(Bit#(128), TagT)) writeWordQ <- mkFIFO();
 
-	FIFO#(FlashRespT) flashRespQ <- mkFIFO;
+	//FIFO#(FlashRespT) flashRespQ <- mkFIFO;
+	FIFO#(Tuple2#(Bit#(128), TagT)) flashRespQ0 <- mkFIFO;
+	FIFO#(Bool) flashRespQ1 <- mkFIFO;
+	FIFO#(Tuple2#(TagT, StatusT)) flashRespQ2 <- mkFIFO;
 
 	Vector#(8, Reg#(Bit#(TLog#(PageWords)))) beatCnts <- replicateM(mkReg(0));
 	Integer beatsPerPage = valueOf(PageWords);
 
 	Vector#(n, FIFO#(Tuple2#(Bit#(128), TagT))) readWordQs <- replicateM(mkFIFO);
-	rule distReadWord if ( flashRespQ.first matches tagged ReadWord .rsp);
-		flashRespQ.deq;
-		let {orTag, channel, busId} <- reqRenameTb.readResp;
-		let {d, reTag} = rsp;
+	rule distReadWord; // if ( flashRespQ.first matches tagged ReadWord .rsp);
+		flashRespQ0.deq;
+		let {orTag, channel, busId} <- reqRenameTb.readResp0;
+		let {d, reTag} = flashRespQ0.first;// rsp;
 		readWordQs[channel].enq(tuple2(d, orTag));
 		if (verbose) $display("(%m) distReadWord orTag, channel, bus, reTag, beatCnt, beatMax = {%d, %d, %d, %d, %d, %d}", orTag, channel, busId, reTag, beatCnts[busId], beatsPerPage);
 		if ( beatCnts[busId] == fromInteger(beatsPerPage - 1) ) begin
@@ -65,17 +68,17 @@ module mkFlashSwitch(FlashSwitch#(n)) provisos(
 	endrule
 
 	Vector#(n, FIFO#(TagT)) writeReqQs <- replicateM(mkFIFO);
-	rule distWriteReq if ( flashRespQ.first matches tagged WriteDataReq .rsp);
-		flashRespQ.deq;
-		let {orTag, channel, busId} <- reqRenameTb.readResp;
+	rule distWriteReq; // if ( flashRespQ.first matches tagged WriteDataReq .rsp);
+		flashRespQ1.deq;
+		let {orTag, channel, busId} <- reqRenameTb.readResp1;
 		writeReqQs[channel].enq(orTag);
 	endrule
 
 	Vector#(n, FIFO#(Tuple2#(TagT, StatusT))) ackStatusQs <- replicateM(mkFIFO);
-	rule distAckStatus if ( flashRespQ.first matches tagged AckStatus .rsp);
-		flashRespQ.deq;
-		let {orTag, channel, busId} <- reqRenameTb.readResp;
-		let {reTag, d} = rsp;
+	rule distAckStatus;// if ( flashRespQ.first matches tagged AckStatus .rsp);
+		flashRespQ2.deq;
+		let {orTag, channel, busId} <- reqRenameTb.readResp2;
+		let {reTag, d} = flashRespQ2.first;// rsp;
 		ackStatusQs[channel].enq(tuple2(orTag, d));
 		reqRenameTb.invalidEntry(reTag);
 	endrule
@@ -124,16 +127,16 @@ module mkFlashSwitch(FlashSwitch#(n)) provisos(
 		endmethod
 		method Action readWord (Tuple2#(Bit#(128), TagT) taggedData); 
 			readBeatCnt <= readBeatCnt + 1;
-			reqRenameTb.readEntry(tpl_2(taggedData));
-			flashRespQ.enq(tagged ReadWord taggedData);
+			reqRenameTb.readEntry0(tpl_2(taggedData));
+			flashRespQ0.enq(taggedData);
 		endmethod
 		method Action writeDataReq(TagT tag); 
-			reqRenameTb.readEntry(tag);
-			flashRespQ.enq(tagged WriteDataReq tag);
+			reqRenameTb.readEntry1(tag);
+			flashRespQ1.enq(?);
 		endmethod
 		method Action ackStatus (Tuple2#(TagT, StatusT) taggedStatus); 
-			reqRenameTb.readEntry(tpl_1(taggedStatus));
-			flashRespQ.enq(tagged AckStatus taggedStatus);
+			reqRenameTb.readEntry2(tpl_1(taggedStatus));
+			flashRespQ2.enq(taggedStatus);
 		endmethod
 	endinterface
 	method Bit#(32) readCnt = readBeatCnt;
