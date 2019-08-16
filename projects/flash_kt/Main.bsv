@@ -7,6 +7,8 @@ import GetPut::*;
 import ClientServer::*;
 import Connectable::*;
 
+import Ehr::*;
+
 import Vector::*;
 import BuildVector::*;
 import List::*;
@@ -111,8 +113,10 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 	Reg#(Bool) started <- mkReg(False);
 	Reg#(Bit#(64)) cycleCnt <- mkReg(0);
+	Ehr#(2, Bool) busyCompaction <- mkEhr(False);
+	Ehr#(2, Bool) blockHostCmdQ <- mkEhr(False);
 
-	FIFO#(FlashCmd) flashCmdQ <- mkSizedFIFO(num_tags/2); // virtex has 32 / artix has 128 depth Q
+	FIFO#(FlashCmd) flashCmdQ <- mkSizedFIFO(num_tags); // virtex has 32 / artix has 128 depth Q
 	Vector#(NumTags, Reg#(BusT)) tag2busTable <- replicateM(mkRegU());
 	Vector#(TDiv#(NumTags,2), Reg#(BusT)) tag2busTableMerge <- replicateM(mkRegU());
 
@@ -169,6 +173,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		let {numKt, numInvalAddr, counter} <- ktMergeManager.mergeDone;
 		indication.mergeDone(numKt, numInvalAddr, counter);
 
+		blockHostCmdQ[1] <= True;
+
 		initKtWrite.enq(numKt);
 	endrule
 
@@ -196,6 +202,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 			initKtWrite.deq;
 			ktWriteReqDone.enq(ktsToFlush);
 			indication.mergeFlushDone1(0);
+			blockHostCmdQ[0] <= False;
 		end
 		else reqSent <= reqSent + 1;
 
@@ -233,7 +240,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		cycleCnt <= cycleCnt + 1;
 	endrule
 
-	rule driveFlashCmd; // (started);
+	rule driveFlashCmd (!blockHostCmdQ[0]); 
 		let cmd = flashCmdQ.first;
 		flashCmdQ.deq;
 		tag2busTable[cmd.tag] <= cmd.bus;
@@ -525,6 +532,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 					ktWriteReqDone.deq;
 					numKtWritten <= 0;
 					indication.mergeFlushDone2(0);
+					busyCompaction[0] <= False;
 				end
 				else begin
 					numKtWritten <= numKtWritten + 1;
@@ -549,6 +557,14 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		//indication.debugDumpResp(gearboxSendCnt, gearboxRecCnt, auroraSendCntCC, auroraRecCntCC, debugReadCnt, debugWriteCnt);
 		indication.debugDumpResp(gearboxSendCnt, gearboxRecCnt, auroraSendCntCC, auroraRecCntCC, flashSwitch.readCnt, flashSwitch.writeCnt);
 	endrule
+
+	FIFO#(Tuple2#(Bit#(32), Bit#(32))) trigCompactionQ <- mkFIFO;
+
+	rule issueCompaction (!busyCompaction[0]);
+		let {cntHigh, cntLow} <- toGet(trigCompactionQ).get;
+		ktMergeManager.startCompaction(cntHigh, cntLow);
+		busyCompaction[1] <= True;
+	endrule
 	
 	Vector#(NumWriteClients, MemWriteClient#(DataBusWidth)) dmaWriteClientVec; // = vec(we.dmaClient); 
 	Vector#(NumReadClients, MemReadClient#(DataBusWidth)) dmaReadClientVec;
@@ -565,6 +581,10 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	for (Integer tt = `NumReFlash; tt < valueOf(NumReadClients); tt=tt+1) begin
 		dmaReadClientVec[tt] = mergeRe[tt-`NumReFlash].dmaClient;
 	end
+
+	// Prioritize merger DMA
+	dmaWriteClientVec = reverse(dmaWriteClientVec);
+	dmaReadClientVec = reverse(dmaReadClientVec);
 
 	interface FlashRequest request;
 		method Action readPage(Bit#(32) bus, Bit#(32) chip, Bit#(32) block, Bit#(32) page, Bit#(32) tag, Bit#(32) offset);
@@ -618,7 +638,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 		// Compaction related
 		method Action startCompaction(Bit#(32) cntHigh, Bit#(32) cntLow);
-			ktMergeManager.startCompaction(cntHigh, cntLow);
+			trigCompactionQ.enq(tuple2(cntHigh, cntLow));
+//			ktMergeManager.startCompaction(cntHigh, cntLow);
 //			debug2cnt<=0;
 		endmethod
 		method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);

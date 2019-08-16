@@ -30,13 +30,13 @@ import ControllerTypes::*;
 import KeytableMerger::*;
 
 interface KtAddrManager;
-	method Action startGetPpa(Bit#(32) numKtHigh, Bit#(32) numKtLow);
 	method Action startGetPpaDest(Bit#(32) num);
+	method Action startGetPpa(Bit#(32) numKtHigh, Bit#(32) numKtLow);
 
 	// TODO: testing.. guards on getPpaHigh/getPpaLow needs to be fixed
+	method ActionValue#(Bit#(32)) getPpaDest();
 	method ActionValue#(Bit#(32)) getPpaHigh();
 	method ActionValue#(Bit#(32)) getPpaLow();
-	method ActionValue#(Bit#(32)) getPpaDest();
 
 	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
 endinterface
@@ -54,7 +54,8 @@ module mkKtAddrManager #(
 	///////////////////////////////////////////////////
 	Integer dmaBurstBytes = 128;
 
-	// [0]: High Level, [1]: Low Level, [2]: Merged result
+	// FIXME: [0]: High Level, [1]: Low Level, [2]: Merged result - Result ppa blocked by read ppa reqs;;
+	// [0] Merged result Ppa, [1]: High Level, [2]: Low Level
 	Vector#(3, FIFOF#(Bit#(32))) genPpaReq <- replicateM(mkFIFOF);
 	Vector#(3, FIFOF#(Bit#(32))) ppaList <- replicateM(mkSizedFIFOF(4));
 
@@ -150,27 +151,34 @@ module mkKtAddrManager #(
 	Reg#(Bit#(32)) destPpaCnt <- mkReg(0);
 	Reg#(Bit#(32)) destPpaTotal <- mkReg(0);
 
-	method ActionValue#(Bit#(32)) getPpaHigh();
-		highPpaCnt <= highPpaCnt + 1;
+
+	method ActionValue#(Bit#(32)) getPpaDest();
+		destPpaCnt <= destPpaCnt + 1;
 		ppaList[0].deq;
 		return ppaList[0].first;
 	endmethod
-
-	method ActionValue#(Bit#(32)) getPpaLow();
-		lowPpaCnt <= lowPpaCnt + 1;
+	method ActionValue#(Bit#(32)) getPpaHigh();
+		highPpaCnt <= highPpaCnt + 1;
 		ppaList[1].deq;
 		return ppaList[1].first;
 	endmethod
 
-	method ActionValue#(Bit#(32)) getPpaDest();
-		destPpaCnt <= destPpaCnt + 1;
+	method ActionValue#(Bit#(32)) getPpaLow();
+		lowPpaCnt <= lowPpaCnt + 1;
 		ppaList[2].deq;
 		return ppaList[2].first;
 	endmethod
 
+	method Action startGetPpaDest(Bit#(32) num) if (destPpaCnt==destPpaTotal);
+		genPpaReq[0].enq(num);
+
+		destPpaCnt <= 0;
+		destPpaTotal <= num;
+	endmethod
+
 	method Action startGetPpa(Bit#(32) numKtHigh, Bit#(32) numKtLow) if (lowPpaCnt==lowPpaTotal && highPpaCnt==highPpaTotal);
-		genPpaReq[0].enq(numKtHigh);
-		genPpaReq[1].enq(numKtLow);
+		genPpaReq[1].enq(numKtHigh);
+		genPpaReq[2].enq(numKtLow);
 
 		highPpaCnt <= 0;
 		lowPpaCnt <= 0;
@@ -178,16 +186,9 @@ module mkKtAddrManager #(
 		lowPpaTotal <= numKtLow;
 	endmethod
 
-	method Action startGetPpaDest(Bit#(32) num) if (destPpaCnt==destPpaTotal);
-		genPpaReq[2].enq(num);
-
-		destPpaCnt <= 0;
-		destPpaTotal <= num;
-	endmethod
-
 	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
-		dmaPpaSgid[0] <= sgIdHigh;
-		dmaPpaSgid[1] <= sgIdLow;
-		dmaPpaSgid[2] <= sgIdRes;
+		dmaPpaSgid[0] <= sgIdRes;
+		dmaPpaSgid[1] <= sgIdHigh;
+		dmaPpaSgid[2] <= sgIdLow;
 	endmethod
 endmodule
