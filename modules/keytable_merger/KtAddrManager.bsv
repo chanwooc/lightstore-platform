@@ -38,7 +38,8 @@ interface KtAddrManager;
 	method ActionValue#(Bit#(32)) getPpaHigh();
 	method ActionValue#(Bit#(32)) getPpaLow();
 
-	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
+	method Action setDestPpaFlag(Bit#(1) flag);
+	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes1, Bit#(32) sgIdRes2);
 endinterface
 
 module mkKtAddrManager #(
@@ -46,7 +47,8 @@ module mkKtAddrManager #(
 ) (KtAddrManager);
 	// DMA SgId for Flash Addresses (High KT, Low KT) and destination KT Flash Addresses
 	// [0]: High Level, [1]: Low Level, [2]: Merged result
-	Vector#(3, Reg#(Bit#(32))) dmaPpaSgid <- replicateM(mkReg(0));
+	Vector#(3, Vector#(2, Reg#(Bit#(32)))) dmaPpaSgid <- replicateM(replicateM(mkReg(0)));
+	Vector#(3, Reg#(Bit#(1))) dmaPpaFlag <- replicateM(mkReg(0));
 
 	///////////////////////////////////////////////////
 	// Generate read request for Ppa lists (High/Low)
@@ -66,7 +68,7 @@ module mkKtAddrManager #(
 			// each req is 8Beat=128B holding 32 Ppa entries
 			// for every 32 KT Ppas, DMA req needs to be generated
 			let dmaCmd = MemengineCmd {
-								sglId: dmaPpaSgid[i], 
+								sglId: dmaPpaSgid[i][dmaPpaFlag[i]], 
 								base: zeroExtend(ppaReqSent<<7), // <<7 or *128
 								len:fromInteger(dmaBurstBytes), 
 								burstLen:fromInteger(dmaBurstBytes)
@@ -185,10 +187,15 @@ module mkKtAddrManager #(
 		highPpaTotal <= numKtHigh;
 		lowPpaTotal <= numKtLow;
 	endmethod
-
-	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
-		dmaPpaSgid[0] <= sgIdRes;
-		dmaPpaSgid[1] <= sgIdHigh;
-		dmaPpaSgid[2] <= sgIdLow;
+	method Action setDestPpaFlag(Bit#(1) flag);
+		dmaPpaFlag[0] <= flag;
+	endmethod
+	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes1, Bit#(32) sgIdRes2);
+		dmaPpaSgid[0][0] <= sgIdRes1;
+		dmaPpaSgid[0][1] <= sgIdRes2;
+		dmaPpaSgid[1][0] <= sgIdHigh;
+		dmaPpaSgid[1][1] <= sgIdHigh;
+		dmaPpaSgid[2][0] <= sgIdLow;
+		dmaPpaSgid[2][1] <= sgIdLow;
 	endmethod
 endmodule

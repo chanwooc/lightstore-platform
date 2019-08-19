@@ -53,8 +53,8 @@ interface FlashRequest;
 	method Action setDmaReadRef(Bit#(32) sgId);
 	method Action setDmaWriteRef(Bit#(32) sgId);
 
-	method Action startCompaction(Bit#(32) cntHigh, Bit#(32) cntLow);
-	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
+	method Action startCompaction(Bit#(32) cntHigh, Bit#(32) cntLow, Bit#(32) destPpaFlag);
+	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes1, Bit#(32) sgIdRes2);
 	method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
 
 	method Action start(Bit#(32) dummy);
@@ -558,11 +558,11 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		indication.debugDumpResp(gearboxSendCnt, gearboxRecCnt, auroraSendCntCC, auroraRecCntCC, flashSwitch.readCnt, flashSwitch.writeCnt);
 	endrule
 
-	FIFO#(Tuple2#(Bit#(32), Bit#(32))) trigCompactionQ <- mkFIFO;
+	FIFO#(Tuple3#(Bit#(32), Bit#(32), Bit#(1))) trigCompactionQ <- mkFIFO;
 
 	rule issueCompaction (!busyCompaction[0]);
-		let {cntHigh, cntLow} <- toGet(trigCompactionQ).get;
-		ktMergeManager.startCompaction(cntHigh, cntLow);
+		let {cntHigh, cntLow, ppaFlag} <- toGet(trigCompactionQ).get;
+		ktMergeManager.startCompaction(cntHigh, cntLow, ppaFlag);
 		busyCompaction[1] <= True;
 	endrule
 	
@@ -637,13 +637,12 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		endmethod
 
 		// Compaction related
-		method Action startCompaction(Bit#(32) cntHigh, Bit#(32) cntLow);
-			trigCompactionQ.enq(tuple2(cntHigh, cntLow));
-//			ktMergeManager.startCompaction(cntHigh, cntLow);
-//			debug2cnt<=0;
+		method Action startCompaction(Bit#(32) cntHigh, Bit#(32) cntLow, Bit#(32) destPpaFlag);
+			trigCompactionQ.enq(tuple3(cntHigh, cntLow, truncate(destPpaFlag)));
 		endmethod
-		method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
-			ktMergeManager.setDmaKtPpaRef(sgIdHigh, sgIdLow, sgIdRes);
+		method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes1, Bit#(32) sgIdRes2);
+			// To avoid race condition, we need TWO dma-regions for destination PPAs
+			ktMergeManager.setDmaKtPpaRef(sgIdHigh, sgIdLow, sgIdRes1, sgIdRes2);
 		endmethod
 		method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
 			ktMergeManager.setDmaKtOutputRef(sgIdKtBuf, sgIdInvalPPA);

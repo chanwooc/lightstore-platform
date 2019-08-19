@@ -34,8 +34,8 @@ import FlashCtrlIfc::*;
 
 // LightStore Keytable Merge Manager
 interface LightStoreKtMerger;
-	method Action startCompaction(Bit#(32) numKtHigh, Bit#(32) numKtLow);
-	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
+	method Action startCompaction(Bit#(32) numKtHigh, Bit#(32) numKtLow, Bit#(1) destPpaFlag);
+	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes1, Bit#(32) sgIdRes2);
 	method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
 
 	method ActionValue#(Bit#(32)) getPpaDest;
@@ -363,15 +363,16 @@ module mkLightStoreKtMerger #(
 		mergeDoneQ.enq(tuple3(d, invalAddrs, counter-counter_firstOut));
 	endrule
 
-	method Action startCompaction(Bit#(32) numKtHigh, Bit#(32) numKtLow);
+	method Action startCompaction(Bit#(32) numKtHigh, Bit#(32) numKtLow, Bit#(1) destPpaFlag);
+		addrManager.setDestPpaFlag(destPpaFlag);
 		addrManager.startGetPpa(numKtHigh, numKtLow);
 		ktMerger.runMerge(numKtHigh, numKtLow);
 
 		genPageCntHigh <= 0;
 		genPageCntLow <= 0;
 	endmethod
-	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes);
-		addrManager.setDmaKtPpaRef(sgIdHigh, sgIdLow, sgIdRes);
+	method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes1, Bit#(32) sgIdRes2);
+		addrManager.setDmaKtPpaRef(sgIdHigh, sgIdLow, sgIdRes1, sgIdRes2);
 	endmethod
 	method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
 		mergedKtBufSgid <= sgIdKtBuf;
