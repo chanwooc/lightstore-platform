@@ -15,7 +15,7 @@ AUTOTOP=--interface pins:Main.pins
 # Best Set-up for ZCU102 (2 Masters, 2 ReadEngines and 4 WriteEngines)
 NUMBER_OF_MASTERS=2
 PLATFORM_NUMBER_OF_MASTERS=2
-NUMBER_OF_RENGINES=3 # Flash Write (DMA Read)
+NUMBER_OF_RENGINES=4 # Flash Write (DMA Read)
 NUMBER_OF_WENGINES=8 # Flash Read  (DMA Write)
 #BURST_LEN_SIZE=13    # Each flash page = 8KB
 
@@ -36,6 +36,7 @@ CONNECTALFLAGS += -D MMU_INDEX_WIDTH=11     # To support larger MMU table (porta
 
 BSVFILES = Main.bsv \
 	../../modules/keytable_merger/LightStoreKtMerger.bsv \
+	../../modules/keytable_searcher/LightStoreKtSearcher.bsv \
 	../../lib/LibDummy.bsv \
 	../../platform/aurora_intra/AuroraIntraZcu.bsv \
 	../../platform/flash_ctrl/common/FlashBusModel.bsv \

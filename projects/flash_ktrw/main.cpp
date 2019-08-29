@@ -21,7 +21,7 @@
 #include "FlashRequest.h"
 
 // Test Definitions
-#define TEST_ERASE_ALL		 // eraseAll.exe's only test
+// #define TEST_ERASE_ALL		 // eraseAll.exe's only test
 // #define TEST_MINI_FUNCTION
 // #define TEST_READ_SPEED
 // #define TEST_HEAVY_READ
@@ -30,6 +30,7 @@
 // #define KT_READ
 // #define KT_MERGE
 // #define KT_READ_MERGE
+#define KT_READ_ACCEL
 
 #define DEFAULT_VERBOSE_REQ  false
 #define DEFAULT_VERBOSE_RESP false
@@ -66,6 +67,11 @@ typedef struct {
 	int page;
 } TagTableEntry;
 
+typedef struct {
+	bool busy;
+	int ppa;
+} TagKeyTableEntry;
+
 FlashRequestProxy *device;
 
 pthread_mutex_t flashReqMutex;
@@ -84,6 +90,7 @@ unsigned int* writeBuffers[NUM_TAGS];
 TagTableEntry readTagTable[NUM_TAGS];
 TagTableEntry writeTagTable[NUM_TAGS];
 TagTableEntry eraseTagTable[NUM_TAGS];
+TagKeyTableEntry keyTagTable[NUM_TAGS];
 FlashStatusT flashStatus[NUM_BUSES][CHIPS_PER_BUS][BLOCKS_PER_CHIP];
 
 bool testPassed = false;
@@ -93,6 +100,7 @@ bool verbose_resp = DEFAULT_VERBOSE_RESP;
 int curReadsInFlight = 0;
 int curWritesInFlight = 0;
 int curErasesInFlight = 0;
+int curSearchInFlight = 0;
 
 
 double timespec_diff_sec( timespec start, timespec end ) {
@@ -157,6 +165,19 @@ char *testBuf;
 class FlashIndication: public FlashIndicationWrapper {
 	public:
 		FlashIndication(unsigned int id) : FlashIndicationWrapper(id){}
+		virtual void findKeyDone(uint16_t tag, uint16_t status, uint32_t ppa) {
+			if (status == 1) {
+				fprintf(stderr, "findKeyDone: tag %u, status %u, ppa %x \n", (uint32_t)tag, (uint32_t)status,  ppa);
+				fflush(stderr);
+			}
+			pthread_mutex_lock(&flashReqMutex);
+			curSearchInFlight--;
+			if(keyTagTable[tag].busy == false) fprintf(stderr, "Tag dup?\n");
+
+			keyTagTable[tag].busy = false;
+			pthread_mutex_unlock(&flashReqMutex);
+		}
+
 		virtual void mergeDone(unsigned int numMergedKt, uint32_t numInvalAddr, uint64_t counter) {
 			fprintf(stderr, "mergeDone: kt%u inval%u timer:%" PRIu64 "\n", numMergedKt, numInvalAddr, counter);
 			fflush(stderr);
@@ -181,7 +202,6 @@ class FlashIndication: public FlashIndicationWrapper {
 			flush_done2 = 1;
 			pthread_mutex_unlock(&flashReqMutex);
 		}
-
 
 		virtual void readDone(unsigned int tag) {
 
@@ -272,6 +292,7 @@ class FlashIndication: public FlashIndicationWrapper {
 int getNumReadsInFlight() { return curReadsInFlight; }
 int getNumWritesInFlight() { return curWritesInFlight; }
 int getNumErasesInFlight() { return curErasesInFlight; }
+int getNumSearchInFlight() { return curSearchInFlight; }
 
 //TODO: more efficient locking
 int waitIdleEraseTag() {
@@ -315,6 +336,22 @@ int waitIdleReadBuffer() {
 		for ( int t = 0; t < NUM_TAGS; t++ ) {
 			if ( !readTagTable[t].busy ) {
 				readTagTable[t].busy = true;
+				tag = t;
+				break;
+			}
+		}
+		pthread_mutex_unlock(&flashReqMutex);
+	}
+	return tag;
+}
+
+int waitIdleKeyBuffer() {
+	int tag = -1;
+	while ( tag < 0 ) {
+		pthread_mutex_lock(&flashReqMutex);
+		for ( int t = 0; t < NUM_TAGS; t++ ) {
+			if ( !keyTagTable[t].busy ) {
+				keyTagTable[t].busy = true;
 				tag = t;
 				break;
 			}
@@ -511,6 +548,8 @@ int main(int argc, const char **argv)
 	for (int t = 0; t < NUM_TAGS; t++) {
 		readTagTable[t].busy = false;
 		writeTagTable[t].busy = false;
+		eraseTagTable[t].busy = false;
+		keyTagTable[t].busy = false;
 
 		int byteOffset = t * FPAGE_SIZE;
 		readBuffers[t] = dstBuffer + byteOffset/sizeof(unsigned int);
@@ -971,6 +1010,73 @@ int main(int argc, const char **argv)
 			}
 		}
 	}
+#endif
+
+	sleep(1);
+
+#if defined(KT_READ_ACCEL)
+	fprintf(stderr, "Kt find Key Test\n");
+	int searchKeyAlloc = portalAlloc(256*128, 0);
+	unsigned int (*searchKeyBuf)[64] = (unsigned int(*)[64])portalMmap(searchKeyAlloc, 256*128);
+	portalCacheFlush(searchKeyAlloc, searchKeyBuf, 256*128, 1);
+	unsigned int ref_searchKeyAlloc = dma->reference(searchKeyAlloc);
+	device->setDmaKtSearchRef(ref_searchKeyAlloc);
+
+	//searchKeyBuf[0][1] = 0x37393331;
+	//searchKeyBuf[0][2] = 0x38393934;
+	searchKeyBuf[9][1] = 0x33383531;
+	searchKeyBuf[9][2] = 0x30303030;
+	searchKeyBuf[9][3] = 0x30303030;
+	searchKeyBuf[9][4] = 0x30303030;
+	searchKeyBuf[9][5] = 0x30303030;
+	searchKeyBuf[9][6] = 0x30303030;
+	searchKeyBuf[9][7] = 0x30303030;
+	searchKeyBuf[9][8] = 0x30303030;
+	searchKeyBuf[9][9] = 0x30303030;
+	searchKeyBuf[9][10] = 0x30303030;
+	searchKeyBuf[9][11] = 0x30303030;
+
+//	const int startPpaH[] = {0, 100, 300};
+	const int startPpaL[] = {1, 200, 400};
+//	const int numPpaH[] = {1, 41, 100};
+	const int numPpaL[] = {1, 88, 1000};
+
+	timespec start, now;
+	clock_gettime(CLOCK_REALTIME, &start);
+
+	int repeatNum = 100;
+	int numPpa = numPpaL[2];
+	int startPpa = startPpaL[2];
+
+	for (int repeat = 0; repeat < repeatNum; repeat++) {
+		for (int i = 0; i<numPpa; i++) {
+			int freeTag = waitIdleKeyBuffer();
+			device->findKey(startPpa+i, 3, freeTag);
+
+			pthread_mutex_lock(&flashReqMutex);
+			curSearchInFlight++;
+			pthread_mutex_unlock(&flashReqMutex);
+		}
+	}
+
+	int elapsed = 10000;
+	while (true) {
+		usleep(100);
+		if (elapsed == 0) {
+			elapsed=10000;
+			device->debugDumpReq(0);
+		}
+		else {
+			elapsed--;
+		}
+		if ( getNumSearchInFlight() == 0 ) break;
+	}
+
+	clock_gettime(CLOCK_REALTIME, & now);
+	fprintf(stderr, "SPEED: %f MB/s\n", (8192.0*repeatNum*numPpa/1000000)/timespec_diff_sec(start,now));
+
+	fprintf(stderr, "Kt find Key Done\n");
+
 #endif
 
 	sleep(1);

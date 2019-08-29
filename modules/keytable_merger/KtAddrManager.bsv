@@ -46,7 +46,7 @@ module mkKtAddrManager #(
 	Vector#(3, MemReadEngineServer#(DataBusWidth)) rsV
 ) (KtAddrManager);
 	// DMA SgId for Flash Addresses (High KT, Low KT) and destination KT Flash Addresses
-	// [0]: High Level, [1]: Low Level, [2]: Merged result
+	// [0] Merged result Ppa, [1]: High Level, [2]: Low Level
 	Vector#(3, Vector#(2, Reg#(Bit#(32)))) dmaPpaSgid <- replicateM(replicateM(mkReg(0)));
 	Vector#(3, Reg#(Bit#(1))) dmaPpaFlag <- replicateM(mkReg(0));
 
@@ -69,7 +69,7 @@ module mkKtAddrManager #(
 			// for every 32 KT Ppas, DMA req needs to be generated
 			let dmaCmd = MemengineCmd {
 								sglId: dmaPpaSgid[i][dmaPpaFlag[i]], 
-								base: zeroExtend(ppaReqSent<<7), // <<7 or *128
+								base: zeroExtend(ppaReqSent)<<7, // <<7 or *128
 								len:fromInteger(dmaBurstBytes), 
 								burstLen:fromInteger(dmaBurstBytes)
 							};

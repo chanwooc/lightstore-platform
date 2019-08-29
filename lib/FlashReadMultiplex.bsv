@@ -9,9 +9,9 @@ import GetPut::*;
 import FlashCtrlIfc::*;
 import ControllerTypes::*;
 
-typedef 32 ReqPerUser;
+//typedef 32 reqPerUser;
 
-interface FlashReadMultiplex#(numeric type nUsers, numeric type nSwitches);
+interface FlashReadMultiplex#(numeric type reqPerUser, numeric type nUsers, numeric type nSwitches);
 	// in-order request/response per channel
 	interface Vector#(nUsers, Server#(DualFlashAddr, Bit#(128))) flashReadServers;
 
@@ -21,7 +21,10 @@ endinterface
 
 Bool verbose = False;
 
-module mkFlashReadMultiplex(FlashReadMultiplex#(nUsers, nSwitches)) provisos (Add#(a__, TLog#(nUsers), 7));
+module mkFlashReadMultiplex(FlashReadMultiplex#(reqPerUser, nUsers, nSwitches)) provisos (
+	Add#(a__, TLog#(nUsers), 7),
+	Add#(b__, TLog#(reqPerUser), 7)
+);
 
 	Vector#(nSwitches, FIFO#(FlashCmd)) flashReqQs <- replicateM(mkFIFO);
 
@@ -29,21 +32,21 @@ module mkFlashReadMultiplex(FlashReadMultiplex#(nUsers, nSwitches)) provisos (Ad
 	//Vector#(nSwitches, Vector#(8, FIFOF#(Bit#(128)))) busPageBufs <- replicateM(replicateM(mkSizedBRAMFIFOF(pageWords))); // 8224
 
 	// Per user, per Card, per Tag(#Req) reorder buffers
-	Vector#(nUsers, Vector#(nSwitches, Vector#(ReqPerUser, FIFOF#(Bit#(128))))) reorderBufs <- replicateM(replicateM(replicateM(mkSizedBRAMFIFOF(pageWords)))); // 8224
+	Vector#(nUsers, Vector#(nSwitches, Vector#(reqPerUser, FIFOF#(Bit#(128))))) reorderBufs <- replicateM(replicateM(replicateM(mkSizedBRAMFIFOF(pageWords)))); // 8224
 
 	Vector#(nUsers, FIFO#(Bit#(128))) pageRespQs <- replicateM(mkFIFO);
-	Vector#(nUsers, FIFO#(Tuple2#(Bit#(1), Bit#(TLog#(ReqPerUser))))) outstandingReqQ <- replicateM(mkSizedFIFO(valueOf(ReqPerUser)));
+	Vector#(nUsers, FIFO#(Tuple2#(Bit#(1), Bit#(TLog#(reqPerUser))))) outstandingReqQ <- replicateM(mkSizedFIFO(valueOf(reqPerUser)));
 
-	Vector#(nUsers, Vector#(nSwitches,FIFO#(Bit#(TLog#(ReqPerUser))))) freeTagQ <- replicateM(replicateM(mkSizedFIFO(valueOf(ReqPerUser))));
+	Vector#(nUsers, Vector#(nSwitches,FIFO#(Bit#(TLog#(reqPerUser))))) freeTagQ <- replicateM(replicateM(mkSizedFIFO(valueOf(reqPerUser))));
 
 	for(Integer i =0; i < valueOf(nUsers); i=i+1) begin
 		for(Integer j = 0; j < valueOf(nSwitches); j=j+1) begin
-			Reg#(Bit#(TLog#(ReqPerUser))) initCnt <- mkReg(0);
+			Reg#(Bit#(TLog#(reqPerUser))) initCnt <- mkReg(0);
 			Reg#(Bool) init <- mkReg(False);
 			rule initialize (!init);
 				initCnt <= initCnt + 1;
 				freeTagQ[i][j].enq(initCnt);
-				if (initCnt == fromInteger(valueOf(ReqPerUser) - 1))
+				if (initCnt == fromInteger(valueOf(reqPerUser) - 1))
 					init <= True;
 			endrule
 		end
@@ -51,7 +54,7 @@ module mkFlashReadMultiplex(FlashReadMultiplex#(nUsers, nSwitches)) provisos (Ad
 
 	for(Integer i = 0; i < valueOf(nUsers); i=i+1) begin
 		Reg#(Bit#(TLog#(PageWords))) beatCnt <- mkReg(0);
-		Reg#(Tuple2#(Bit#(1), Bit#(TLog#(ReqPerUser)))) readMetaReg <- mkRegU();
+		Reg#(Tuple2#(Bit#(1), Bit#(TLog#(reqPerUser)))) readMetaReg <- mkRegU();
 		rule deqResp;
 			let {card, tag} = readMetaReg;
 			if (beatCnt == 0) begin
@@ -79,7 +82,7 @@ module mkFlashReadMultiplex(FlashReadMultiplex#(nUsers, nSwitches)) provisos (Ad
 					interface Put request;
 						method Action put(DualFlashAddr req);
 							let reqTag <- toGet(freeTagQ[i][req.card]).get;
-							TagT tag = zeroExtend(reqTag)+(fromInteger(i)<<valueOf(TLog#(ReqPerUser)));
+							TagT tag = zeroExtend(reqTag)+(fromInteger(i)<<valueOf(TLog#(reqPerUser)));
 							flashReqQs[req.card].enq(FlashCmd{tag: tag,
 															op: READ_PAGE,
 															bus: req.bus,
@@ -102,8 +105,8 @@ module mkFlashReadMultiplex(FlashReadMultiplex#(nUsers, nSwitches)) provisos (Ad
 					method Action readWord (Tuple2#(Bit#(128), TagT) taggedData); 
 						if (verbose) $display("flashreadmux got readWord from card %d ", i, fshow(taggedData));
 						let {data, tag} = taggedData;
-						Bit#(TLog#(ReqPerUser)) reqTag = truncate(tag);
-						Bit#(TLog#(nUsers)) serverSelect = truncate(tag>>valueOf(TLog#(ReqPerUser)));
+						Bit#(TLog#(reqPerUser)) reqTag = truncate(tag);
+						Bit#(TLog#(nUsers)) serverSelect = truncate(tag>>valueOf(TLog#(reqPerUser)));
 						//busPageBufs[i][bus].enq(data);
 						reorderBufs[serverSelect][i][reqTag].enq(data);
 					endmethod

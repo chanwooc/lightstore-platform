@@ -35,6 +35,7 @@ import FlashCtrlZcu::*;
 import FlashCtrlModel::*;
 
 import LightStoreKtMerger::*; // LightStore Keytable Compaction Manager
+import LightStoreKtSearcher::*;
 import FlashCtrlIfc::*;
 import FlashSwitch::*;
 import FlashReadMultiplex::*;
@@ -60,6 +61,10 @@ interface FlashRequest;
 	method Action start(Bit#(32) dummy);
 	method Action debugDumpReq(Bit#(32) dummy);
 	method Action setDebugVals (Bit#(32) flag, Bit#(32) debugDelay); 
+
+	// Key Search
+	method Action setDmaKtSearchRef(Bit#(32) sgId);
+	method Action findKey(Bit#(32) ppa, Bit#(32) keySz, Bit#(32) tag);
 endinterface
 
 interface FlashIndication;
@@ -71,6 +76,8 @@ interface FlashIndication;
 	method Action mergeDone(Bit#(32) numGenKt, Bit#(32) numInvalAddr, Bit#(64) counter);
 	method Action mergeFlushDone1(Bit#(32) num);
 	method Action mergeFlushDone2(Bit#(32) num);
+	
+	method Action findKeyDone(Bit#(16) tag, Bit#(16) status, Bit#(32) ppa);
 
 // FIXME: indications for testing
 //	method Action debug1(Bit#(32) d, Bit#(32) e, Bit#(32) f);
@@ -135,7 +142,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		FlashCtrlZcuIfc flashCtrl <- mkFlashCtrlZcu(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock);
 	`endif
 
-	FlashSwitch#(3) flashSwitch <- mkFlashSwitch; // users[1] for normal IO & users[0,2] for kt-merging
+	FlashSwitch#(4) flashSwitch <- mkFlashSwitch; // users[1] for normal IO & users[0,2] for kt-merging
 	mkConnection(flashSwitch.flashCtrlClient, flashCtrl.user);
 
 	FlashCtrlUser ktWriteUser = flashSwitch.users[1];
@@ -144,16 +151,21 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	FlashReadMultiplex#(24, 2, 1) flashKtReader <- mkFlashReadMultiplex;
 	mkConnection(flashKtReader.flashClient[0], flashSwitch.users[0]);
 
+	FlashReadMultiplex#(64, 1, 1) flashKtReader2 <- mkFlashReadMultiplex;
+	mkConnection(flashKtReader2.flashClient[0], flashSwitch.users[3]);
+
 	//--------------------------------------------
-	// LightStore Compaction Accelerator & DMA Engine
+	// LightStore Accelerator & DMA Engine
 	//--------------------------------------------
-	Vector#(TSub#(NumReadClients,`NumReFlash), MemReadEngine#(DataBusWidth, DataBusWidth, 2, 3)) mergeRe <- replicateM(mkMemReadEngine);
+	Vector#(TSub#(NumReadClients, TAdd#(1, `NumReFlash)), MemReadEngine#(DataBusWidth, DataBusWidth, 2, 3)) mergeRe <- replicateM(mkMemReadEngine);
 	Vector#(TSub#(NumWriteClients, `NumWeFlash), MemWriteEngine#(DataBusWidth, DataBusWidth,  1, 2)) mergeWe <- replicateM(mkMemWriteEngine);
+	MemReadEngine#(DataBusWidth, DataBusWidth, 4, 1) searchRe <- mkMemReadEngine;
 
 	Vector#(5, MemWriteEngineServer#(DataBusWidth)) mergerWsV;
 	mergerWsV = vec(mergeWe[0].writeServers[0], mergeWe[1].writeServers[0], mergeWe[2].writeServers[0], mergeWe[3].writeServers[0], mergeWe[3].writeServers[1]);
 
 	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(mergeRe[0].readServers, mergerWsV, flashKtReader.flashReadServers);
+	LightStoreKtSearcher ktSearchManager <- mkLightStoreKtSearcher(searchRe.readServers[0], flashKtReader2.flashReadServers[0]);
 
 	FIFO#(Bit#(32)) initKtWrite <- mkFIFO;
 	FIFOF#(Bit#(32)) ktWriteReqDone <- mkFIFOF;
@@ -209,6 +221,11 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		dmaKtMergedOffset[newtag] <= (reqSent << dmaAllocPageSizeLog);
 		tag2busTableMerge[newtag] <= addr.bus;
 		ktWriteUser.sendCmd(fcmd); //forward cmd to flash ctrl
+	endrule
+
+	rule searchDone;
+		let {maybePpa, tag} <- ktSearchManager.findKeyDone;
+		indication.findKeyDone(zeroExtend(tag), zeroExtend(pack(isValid(maybePpa))), fromMaybe(?, maybePpa)); 
 	endrule
 
 	//--------------------------------------------
@@ -565,6 +582,12 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		ktMergeManager.startCompaction(cntHigh, cntLow, ppaFlag);
 		busyCompaction[1] <= True;
 	endrule
+
+	FIFO#(Tuple3#(Bit#(32), KeyBeatT, TagT)) searchReqQ <- mkSizedFIFO(64);
+	rule issueSearch;
+		let {ppa, keySz, tag} <- toGet(searchReqQ).get;
+		ktSearchManager.findKey(ppa, keySz, tag);
+	endrule
 	
 	Vector#(NumWriteClients, MemWriteClient#(DataBusWidth)) dmaWriteClientVec; // = vec(we.dmaClient); 
 	Vector#(NumReadClients, MemReadClient#(DataBusWidth)) dmaReadClientVec;
@@ -578,9 +601,10 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	for (Integer tt = 0; tt < `NumReFlash; tt=tt+1) begin
 		dmaReadClientVec[tt] = re[tt].dmaClient;
 	end
-	for (Integer tt = `NumReFlash; tt < valueOf(NumReadClients); tt=tt+1) begin
+	for (Integer tt = `NumReFlash; tt < valueOf(NumReadClients)-1; tt=tt+1) begin
 		dmaReadClientVec[tt] = mergeRe[tt-`NumReFlash].dmaClient;
 	end
+	dmaReadClientVec[valueOf(NumReadClients)-1] = searchRe.dmaClient;
 
 	// Prioritize merger DMA
 	dmaWriteClientVec = reverse(dmaWriteClientVec);
@@ -660,6 +684,13 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		method Action setDebugVals (Bit#(32) flag, Bit#(32) debugDelay); 
 			delayRegSet <= debugDelay;
 			debugFlag <= flag;
+		endmethod
+
+		method Action setDmaKtSearchRef(Bit#(32) sgId);
+			ktSearchManager.setSearchKeyRef(sgId);
+		endmethod
+		method Action findKey(Bit#(32) ppa, Bit#(32) keySz, Bit#(32) tag);
+			searchReqQ.enq(tuple3(ppa, truncate(keySz), truncate(tag)));
 		endmethod
 	endinterface //FlashRequest
 

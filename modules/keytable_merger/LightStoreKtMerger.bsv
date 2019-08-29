@@ -59,8 +59,8 @@ module mkLightStoreKtMerger #(
 	Reg#(Bit#(32)) mergedKtBufSgid <- mkReg(0);
 	Reg#(Bit#(32)) invalPPAListSgid <- mkReg(0);
 
-	let flashRsHigh = flashRsV[1];
-	let flashRsLow = flashRsV[0];
+	let flashRsHigh = flashRsV[0];
+	let flashRsLow = flashRsV[1];
 
 	// FIXME: below are FIFOs for testing
 	//FIFOF#(Tuple5#(Bit#(32), Bit#(32), Bit#(32), Bit#(32), Bit#(32))) genFlashRead <- mkFIFOF;
