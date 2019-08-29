@@ -283,8 +283,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 	Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) wordPerPageCnts <- replicateM(mkReg(0));
 
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWrReq2RespQ <- replicateM(mkSizedFIFO(4)); 
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWriteReqQ <- replicateM(mkSizedFIFO(4));
+	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWrReq2RespQ <- replicateM(mkSizedFIFO(8)); 
+	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWriteReqQ <- replicateM(mkSizedFIFO(8));
 	Vector#(NUM_ENG_PORTS, FIFOF#(TagT)) dmaWriteDoneQs <- replicateM(mkFIFOF);
 
 	rule doEnqReadFromFlash;
@@ -381,7 +381,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Vector#(NUM_ENG_PORTS, PipeOut#(TagT)) dmaWriteDonePipes = map(toPipeOut, dmaWriteDoneQs);
 	FunnelPipe#(1, NUM_ENG_PORTS, TagT, 2) readAckFunnel <- mkFunnelPipesPipelined(dmaWriteDonePipes);
 
-	FIFO#(TagT) readAckQ <- mkSizedFIFO(8); 
+	FIFO#(TagT) readAckQ <- mkSizedFIFO(16); 
 	mkConnection(toGet(readAckFunnel[0]), toPut(readAckQ));
 
 	rule sendReadDone;
@@ -397,8 +397,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Reg#(Bit#(32)) dmaKtMergedSgid <- mkReg(0);
 
 	FIFO#(Tuple3#(TagT, BusT, Bool)) wrToDmaReqQ <- mkFIFO();
-	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(TagT, Bool))) dmaRdReq2RespQ <- replicateM(mkSizedFIFO(16));
-	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(TagT, Bool))) dmaReadReqQ <- replicateM(mkSizedFIFO(16));
+	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(TagT, Bool))) dmaRdReq2RespQ <- replicateM(mkSizedFIFO(32));
+	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(TagT, Bool))) dmaReadReqQ <- replicateM(mkSizedFIFO(32));
 	Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) dmaReadBurstCount <- replicateM(mkReg(0));
 	//Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) dmaRdReqCnts <- replicateM(mkReg(0));
 
