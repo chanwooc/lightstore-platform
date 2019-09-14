@@ -21,16 +21,16 @@
 #include "FlashRequest.h"
 
 // Test Definitions
-// #define TEST_ERASE_ALL		 // eraseAll.exe's only test
+ #define TEST_ERASE_ALL		 // eraseAll.exe's only test
 // #define TEST_MINI_FUNCTION
-// #define TEST_READ_SPEED
+ #define TEST_READ_SPEED
 // #define TEST_HEAVY_READ
 // #define TEST_WRITE_SPEED
 // #define KT_WRITE
 // #define KT_READ
 // #define KT_MERGE
 // #define KT_READ_MERGE
-#define KT_READ_ACCEL
+// #define KT_READ_ACCEL
 
 #define DEFAULT_VERBOSE_REQ  false
 #define DEFAULT_VERBOSE_RESP false
@@ -1099,7 +1099,7 @@ int main(int argc, const char **argv)
 	unsigned int ref_highPpaAlloc = dma->reference(highPpaAlloc);
 	unsigned int ref_lowPpaAlloc = dma->reference(lowPpaAlloc);
 	unsigned int ref_resPpaAlloc = dma->reference(resPpaAlloc);
-	device->setDmaKtPpaRef(ref_highPpaAlloc, ref_lowPpaAlloc, ref_resPpaAlloc);
+	device->setDmaKtPpaRef(ref_highPpaAlloc, ref_lowPpaAlloc, ref_resPpaAlloc, ref_resPpaAlloc);
 	fprintf(stderr, "Done setting up PPA DMA\n");
 
 	int mergedKtAlloc = portalAlloc(8192*10000, 0);
@@ -1127,10 +1127,10 @@ int main(int argc, const char **argv)
 	//const int startPpaH[] = {2001, 2101, 2301};
 	//const int startPpaL[] = {2002, 2201, 2401};
 
-	//const int startPpaR[] = {10000,10100,11000};
+	const int startPpaR[] = {10000,10100,11000};
 	//const int startPpaR[] = {12000,12100,13000};
 	//const int startPpaR[] = {30001,30101,31001};
-	const int startPpaR[] = {130001,130101,131001};
+	//const int startPpaR[] = {130001,130101,131001};
 
 	const int numPpaH[] = {1, 41, 100};
 	const int numPpaL[] = {1, 88, 1000};
@@ -1158,7 +1158,7 @@ int main(int argc, const char **argv)
 		// start Test
 		clock_gettime(CLOCK_REALTIME, &start);
 		fprintf(stderr, "Start PPA: %u %u\n", numTableHigh, numTableLow); 
-		device->startCompaction(numTableHigh, numTableLow);
+		device->startCompaction(numTableHigh, numTableLow, 0);
 
 		fflush(stderr);
 		device->debugDumpReq(0);   // echo-back debug message

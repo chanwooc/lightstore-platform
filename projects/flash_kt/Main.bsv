@@ -141,7 +141,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	FlashCtrlUser ktWriteUser = flashSwitch.users[1];
 	FlashCtrlUser hostFlashCtrlUser = flashSwitch.users[2];
 
-	FlashReadMultiplex#(24, 2, 1) flashKtReader <- mkFlashReadMultiplex;
+	FlashReadMultiplex#(32, 2, 1) flashKtReader <- mkFlashReadMultiplex;
 	mkConnection(flashKtReader.flashClient[0], flashSwitch.users[0]);
 
 	//--------------------------------------------
