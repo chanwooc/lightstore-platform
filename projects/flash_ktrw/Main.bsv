@@ -154,6 +154,22 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	FlashReadMultiplex#(64, 1, 1) flashKtReader2 <- mkFlashReadMultiplex;
 	mkConnection(flashKtReader2.flashClient[0], flashSwitch.users[3]);
 
+	///////////////////////
+	/// Issue Merge Debug
+	///////////////////////
+	let cur_clk <- exposeCurrentClock;
+	let mergerReset <- mkReset(2, True, cur_clk);
+	Reg#(Bit#(32)) tmp_sgIdHigh <- mkReg(0);
+	Reg#(Bit#(32)) tmp_sgIdLow <- mkReg(0);
+	Reg#(Bit#(32)) tmp_sgIdRes1 <- mkReg(0);
+	Reg#(Bit#(32)) tmp_sgIdRes2 <- mkReg(0);
+	Reg#(Bit#(32)) tmp_sgIdKtBuf <- mkReg(0);
+	Reg#(Bit#(32)) tmp_sgIdInvalPPA <- mkReg(0);
+
+	FIFOF#(Tuple3#(Bit#(32), Bit#(32), Bit#(1))) trigCompactionQ <- mkFIFOF;
+	FIFOF#(Tuple3#(Bit#(32), Bit#(32), Bit#(1))) trigCompactionQ2<- mkFIFOF;
+	FIFOF#(Tuple3#(Bit#(32), Bit#(32), Bit#(1))) trigCompactionQ3<- mkFIFOF;
+
 	//--------------------------------------------
 	// LightStore Accelerator & DMA Engine
 	//--------------------------------------------
@@ -164,7 +180,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Vector#(5, MemWriteEngineServer#(DataBusWidth)) mergerWsV;
 	mergerWsV = vec(mergeWe[0].writeServers[0], mergeWe[1].writeServers[0], mergeWe[2].writeServers[0], mergeWe[3].writeServers[0], mergeWe[3].writeServers[1]);
 
-	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(mergeRe[0].readServers, mergerWsV, flashKtReader.flashReadServers);
+	LightStoreKtMerger ktMergeManager <- mkLightStoreKtMerger(mergeRe[0].readServers, mergerWsV, flashKtReader.flashReadServers, reset_by mergerReset.new_rst);
 	LightStoreKtSearcher ktSearchManager <- mkLightStoreKtSearcher(searchRe.readServers[0], flashKtReader2.flashReadServers[0]);
 
 	FIFO#(Bit#(32)) initKtWrite <- mkFIFO;
@@ -283,8 +299,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 	Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) wordPerPageCnts <- replicateM(mkReg(0));
 
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWrReq2RespQ <- replicateM(mkSizedFIFO(8)); 
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWriteReqQ <- replicateM(mkSizedFIFO(8));
+	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWrReq2RespQ <- replicateM(mkSizedFIFO(16)); 
+	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWriteReqQ <- replicateM(mkSizedFIFO(16));
 	Vector#(NUM_ENG_PORTS, FIFOF#(TagT)) dmaWriteDoneQs <- replicateM(mkFIFOF);
 
 	rule doEnqReadFromFlash;
@@ -381,7 +397,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Vector#(NUM_ENG_PORTS, PipeOut#(TagT)) dmaWriteDonePipes = map(toPipeOut, dmaWriteDoneQs);
 	FunnelPipe#(1, NUM_ENG_PORTS, TagT, 2) readAckFunnel <- mkFunnelPipesPipelined(dmaWriteDonePipes);
 
-	FIFO#(TagT) readAckQ <- mkSizedFIFO(16); 
+	FIFO#(TagT) readAckQ <- mkSizedFIFO(32); 
 	mkConnection(toGet(readAckFunnel[0]), toPut(readAckQ));
 
 	rule sendReadDone;
@@ -578,8 +594,23 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	FIFO#(Tuple3#(Bit#(32), Bit#(32), Bit#(1))) trigCompactionQ <- mkFIFO;
 
 	rule issueCompaction (!busyCompaction[0]);
-		let {cntHigh, cntLow, ppaFlag} <- toGet(trigCompactionQ).get;
+		let d <- toGet(trigCompactionQ).get;
+		trigCompactionQ2.enq(d);
+		mergerReset.assertReset;
+	endrule
+	Reg#(Bit#(2)) waitVar <- mkReg(0);
+	rule issueCompaction2 (trigCompactionQ2.notEmpty);
+		waitVar <= waitVar+1;
+		if (waitVar == 3) begin
+			let d <- toGet(trigCompactionQ2).get;
+			trigCompactionQ3.enq(d);
+		end
+	endrule
+	rule issueCompaction3;
+		let {cntHigh, cntLow, ppaFlag} <- toGet(trigCompactionQ3).get;
 		ktMergeManager.startCompaction(cntHigh, cntLow, ppaFlag);
+		ktMergeManager.setDmaKtPpaRef(tmp_sgIdHigh, tmp_sgIdLow, tmp_sgIdRes1, tmp_sgIdRes2);
+		ktMergeManager.setDmaKtOutputRef(tmp_sgIdKtBuf, tmp_sgIdInvalPPA);
 		busyCompaction[1] <= True;
 	endrule
 
@@ -666,10 +697,17 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		endmethod
 		method Action setDmaKtPpaRef(Bit#(32) sgIdHigh, Bit#(32) sgIdLow, Bit#(32) sgIdRes1, Bit#(32) sgIdRes2);
 			// To avoid race condition, we need TWO dma-regions for destination PPAs
-			ktMergeManager.setDmaKtPpaRef(sgIdHigh, sgIdLow, sgIdRes1, sgIdRes2);
+			// ktMergeManager.setDmaKtPpaRef(sgIdHigh, sgIdLow, sgIdRes1, sgIdRes2);
+			tmp_sgIdHigh <= sgIdHigh;
+			tmp_sgIdLow <= sgIdLow;
+			tmp_sgIdRes1 <= sgIdRes1;
+			tmp_sgIdRes2 <= sgIdRes2;
 		endmethod
 		method Action setDmaKtOutputRef(Bit#(32) sgIdKtBuf, Bit#(32) sgIdInvalPPA);
-			ktMergeManager.setDmaKtOutputRef(sgIdKtBuf, sgIdInvalPPA);
+			// ktMergeManager.setDmaKtOutputRef(sgIdKtBuf, sgIdInvalPPA);
+			tmp_sgIdKtBuf <= sgIdKtBuf;
+			tmp_sgIdInvalPPA <= sgIdInvalPPA;
+
 			dmaKtMergedSgid <= sgIdKtBuf;
 		endmethod
 
