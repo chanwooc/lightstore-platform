@@ -4,7 +4,7 @@ BUILD_DIR=build_dir
 keytable:
 	@mkdir -p build_dir
 	touch ConnectalProjectConfig.bsv
-	bsc -bdir build_dir -vdir . -u -p +:..:../../../lib:../../../platform/flash_ctrl/common -verilog -show-schedule -aggressive-conditions -g mkMergeKeytable ../KeytableMerger.bsv
+	bsc -bdir build_dir -vdir . -u -p +:..:../../../lib:../../../platform/flash_ctrl/common -verilog -show-schedule -aggressive-conditions -g mkKeytableMerger ../KeytableMerger.bsv
 	rm -f ConnectalProjectConfig.bsv
 
 test:
