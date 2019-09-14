@@ -326,6 +326,7 @@ module mkKeytableMerger (KeytableMerger ifc);
 			end
 			else begin
 				curMStatus <= LOW_FLUSH;
+				decPhaseCnt <= 0;
 				l_entryBeatSent <= 1;
 			end
 		end
@@ -346,6 +347,7 @@ module mkKeytableMerger (KeytableMerger ifc);
 			end
 			else begin
 				curMStatus <= HIGH_FLUSH;
+				decPhaseCnt <= 0;
 				h_entryBeatSent <= 1;
 			end
 		end
