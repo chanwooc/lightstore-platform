@@ -591,8 +591,6 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		indication.debugDumpResp(gearboxSendCnt, gearboxRecCnt, auroraSendCntCC, auroraRecCntCC, flashSwitch.readCnt, flashSwitch.writeCnt);
 	endrule
 
-	FIFO#(Tuple3#(Bit#(32), Bit#(32), Bit#(1))) trigCompactionQ <- mkFIFO;
-
 	rule issueCompaction (!busyCompaction[0]);
 		let d <- toGet(trigCompactionQ).get;
 		trigCompactionQ2.enq(d);
