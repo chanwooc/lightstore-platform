@@ -22,7 +22,7 @@
 
 // Test Definitions
 // #define TEST_ERASE_ALL		 // eraseAll.exe's only test
-#define MINI_TEST_SUITE
+// #define MINI_TEST_SUITE
 #define TEST_READ_SPEED
 // #define TEST_WRITE_SPEED
 // #define KT_WRITE
@@ -545,7 +545,7 @@ int main(int argc, const char **argv)
 		int pageCnt = 2;
 #else
 		int blkStart = 0;
-		int blkCnt = 64; //BLOCKS_PER_CHIP;
+		int blkCnt = 32; //BLOCKS_PER_CHIP;
 		int pageStart = 0;
 		int pageCnt = 4; //PAGES_PER_BLOCK;
 #endif

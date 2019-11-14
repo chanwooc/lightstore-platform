@@ -12,13 +12,12 @@ PIN_TYPE_INCLUDE=Top_Pins
 AUTOTOP=--interface pins:Main.pins
 
 BSVFILES = Main.bsv
-CPPFILES=main.cpp
+CPPFILES = main.cpp
 
 BSVPATH += ../../lib \
 		   ../../platform/flash_ctrl/common \
 		   ../../platform/flash_ctrl/model_main \
 		   ../../platform/flash_ctrl/hw_main \
-		   ../../platform/aurora_intra/ \
 
 CONNECTALFLAGS += -D DataBusWidth=128 -D IMPORT_HOST_CLOCKS
 
@@ -31,11 +30,11 @@ ip.%:
 # per-platform definitions
 ifeq ($(BOARD), bluesim)
 CONNECTALFLAGS += --bscflags " -D BSIM -D NAND_SIM "
-CONNECTALFLAGS += --bsvpath ../../platform/aurora_intra/aurora_8b10b_zcu
+CONNECTALFLAGS += --bsvpath ../../platform/aurora_intra/aurora_8b10b_vc707  # use vc707 simulation model
 
 else ifeq ($(BOARD), verilator)
 CONNECTALFLAGS += --bscflags " -D BSIM -D NAND_SIM "
-CONNECTALFLAGS += --bsvpath ../../platform/aurora_intra/aurora_8b10b_zcu
+CONNECTALFLAGS += --bsvpath ../../platform/aurora_intra/aurora_8b10b_vc707
 
 else ifeq ($(BOARD), zcu102)
 NOHOST_XDC = ../../misc/nohost_zcu.xdc
@@ -79,7 +78,7 @@ NUMBER_OF_RENGINES=2 # Flash Write (DMA Read)
 NUMBER_OF_WENGINES=8 # Flash Read  (DMA Write)
 CONNECTALFLAGS += -D NumReadClients=$(NUMBER_OF_RENGINES) -D NumWriteClients=$(NUMBER_OF_WENGINES)
 
-CONNECTALFLAGS += --mainclockperiod=10 --derivedclockperiod=9.090
+CONNECTALFLAGS += --mainclockperiod=8 --derivedclockperiod=9.090
 CONNECTALFLAGS += -D DEFAULT_NOPROGRAM=1    # To suppress automatic fpga program
 
 CONNECTALFLAGS += \

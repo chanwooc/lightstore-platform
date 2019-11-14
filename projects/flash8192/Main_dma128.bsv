@@ -25,7 +25,7 @@ import XilinxCells ::*;
 `endif
 
 import AuroraCommon::*;
-//import AuroraIntraVirtexFmc1::*;
+//import AuroraIntraFmc1::*;
 
 //import AuroraExtArbiter::*;
 //import AuroraExtImport::*;
@@ -188,8 +188,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) wordPerPageCnts <- replicateM(mkReg(0));
 	Vector#(NUM_ENG_PORTS, Reg#(Bit#(8))) dmaWrReqCnts <- replicateM(mkReg(0));
 
-	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(TagT, Bit#(8)))) dmaWrReq2RespQ <- replicateM(mkSizedFIFO(valueOf(NumTags))); //TODO make bigger?
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWriteReqQ <- replicateM(mkSizedFIFO(valueOf(NumTags)));//TODO make bigger?
+	Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(TagT, Bit#(8)))) dmaWrReq2RespQ <- replicateM(mkSizedFIFO(valueOf(NumTags)/8)); //TODO make bigger?
+	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWriteReqQ <- replicateM(mkSizedFIFO(valueOf(NumTags)/8));//TODO make bigger?
 	Vector#(NUM_ENG_PORTS, FIFOF#(TagT)) dmaWriteDoneQs <- replicateM(mkFIFOF);
 
 	rule doEnqReadFromFlash;
@@ -326,7 +326,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Vector#(NUM_ENG_PORTS, PipeOut#(TagT)) dmaWriteDonePipes = map(toPipeOut, dmaWriteDoneQs);
 	FunnelPipe#(1, NUM_ENG_PORTS, TagT, 2) readAckFunnel <- mkFunnelPipesPipelined(dmaWriteDonePipes);
 
-	FIFO#(TagT) readAckQ <- mkSizedFIFO(valueOf(NumTags));
+	FIFO#(TagT) readAckQ <- mkSizedFIFO(valueOf(NumTags)/4);
 	mkConnection(toGet(readAckFunnel[0]), toPut(readAckQ));
 
 	rule sendReadDone;
@@ -342,8 +342,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Reg#(Bit#(32)) dmaReadSgid <- mkReg(0);
 
 	FIFO#(Tuple2#(TagT, BusT)) wrToDmaReqQ <- mkFIFO();
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaRdReq2RespQ <- replicateM(mkSizedFIFO(valueOf(NumTags))); //TODO sz
-	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaReadReqQ <- replicateM(mkSizedFIFO(valueOf(NumTags)));
+	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaRdReq2RespQ <- replicateM(mkSizedFIFO(valueOf(NumTags)/8)); //TODO sz
+	Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaReadReqQ <- replicateM(mkSizedFIFO(valueOf(NumTags)/8));
 	Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) dmaReadBurstCount <- replicateM(mkReg(0));
 	//Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) dmaRdReqCnts <- replicateM(mkReg(0));
 
