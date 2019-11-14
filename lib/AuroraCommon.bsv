@@ -7,12 +7,11 @@ import Xilinx :: *;
 import XilinxCells :: *;
 import ConnectalXilinxCells::*;
 import ConnectalClocks::*;
-`include "ConnectalProjectConfig.bsv"
 
 typedef 2 AuroraExtCount;
 //typedef 4 AuroraExtQuad; // defined in zynq_multinode (?)
 
-/* Example ClockDiv Code */
+/* Example ClockDiv Code for 7-Series */
 interface ClockDiv4Ifc;
 	interface Clock slowClock;
 endinterface
@@ -50,8 +49,8 @@ interface Aurora_Clock_Pins;
 	method Action gt_clk_n(Bit#(1) v);
 	
 	/* below to be removed by script -- needed for Action methods above */
-	// interface Clock gt_clk_p_deleteme_unused_clock;
-	// interface Clock gt_clk_n_deleteme_unused_clock;
+	interface Clock gt_clk_p_deleteme_unused_clock;
+	interface Clock gt_clk_n_deleteme_unused_clock;
 endinterface
 
 /* Aurora User Interface */
@@ -100,17 +99,17 @@ interface AuroraExtImportIfc#(numeric type lanes);
 	(* prefix = "" *)
 	interface Aurora_Pins#(1) aurora3;
 	(* prefix = "" *)
-	interface AuroraUserIfc#(4, 64) user0;
+	interface AuroraUserIfc#(lanes, 64) user0;
 	(* prefix = "" *)
-	interface AuroraUserIfc#(4, 64) user1;
+	interface AuroraUserIfc#(lanes, 64) user1;
 	(* prefix = "" *)
-	interface AuroraUserIfc#(4, 64) user2;
+	interface AuroraUserIfc#(lanes, 64) user2;
 	(* prefix = "" *)
-	interface AuroraUserIfc#(4, 64) user3;
+	interface AuroraUserIfc#(lanes, 64) user3;
 
-	`ifdef BSIM
+`ifdef BSIM
 	method Action setNodeIdx(Bit#(8) idx);
-	`endif
+`endif
 endinterface
 
 /* GT clock import */
@@ -133,8 +132,8 @@ module mkGtClockImport (GtClockImportIfc);
 		method Action gt_clk_n(Bit#(1) v) = i_gt_clk_n.inputclock(v);
 
 		// These clocks are deleted from the netlist by the synth.tcl script
-		// interface Clock gt_clk_p_deleteme_unused_clock = clk;
-		// interface Clock gt_clk_n_deleteme_unused_clock = clk;
+		interface Clock gt_clk_p_deleteme_unused_clock = clk;
+		interface Clock gt_clk_n_deleteme_unused_clock = clk;
 	endinterface
 
 	interface Clock gt_clk_p_ifc = i_gt_clk_p.c;
@@ -147,8 +146,8 @@ module mkGtClockImport (GtClockImportIfc);
 		method Action gt_clk_n(Bit#(1) v) = noAction;
 
 		// These clocks are deleted from the netlist by the synth.tcl script
-		// interface Clock gt_clk_p_deleteme_unused_clock = clk; 
-		// interface Clock gt_clk_n_deleteme_unused_clock = clk;
+		interface Clock gt_clk_p_deleteme_unused_clock = clk; 
+		interface Clock gt_clk_n_deleteme_unused_clock = clk;
 	endinterface
 
 	interface Clock gt_clk_p_ifc = clk;

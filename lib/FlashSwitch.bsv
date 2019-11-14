@@ -6,7 +6,7 @@ import GetPut::*;
 
 import FlashCtrlIfc::*;
 import ControllerTypes::*;
-import FlashCtrlZcu::*;
+import FlashCtrl::*;
 
 interface FlashSwitch#(numeric type n);
 	interface Vector#(n, FlashCtrlUser) users; // FlashReadMux will use some user ports (8224B IO)

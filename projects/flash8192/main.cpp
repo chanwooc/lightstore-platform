@@ -22,7 +22,7 @@
 
 // Test Definitions
 // #define TEST_ERASE_ALL		 // eraseAll.exe's only test
-// #define TEST_MINI_FUNCTION
+#define MINI_TEST_SUITE
 #define TEST_READ_SPEED
 // #define TEST_WRITE_SPEED
 // #define KT_WRITE
@@ -36,10 +36,21 @@
 // 4096 blks/chip	=> erasure on blocks
 // 8 chips/bus
 // 8 buses
+
+#if defined(SIMULATION)
+#define PAGES_PER_BLOCK 16
+#define BLOCKS_PER_CHIP 128
+#define CHIPS_PER_BUS 8
+#define NUM_BUSES 2 // NAND_SIM (ControllerTypes.bsv)
+
+#else
+// MLC
 #define PAGES_PER_BLOCK 256
 #define BLOCKS_PER_CHIP 4096
 #define CHIPS_PER_BUS 8
 #define NUM_BUSES 8
+
+#endif
 
 // Page Size (Physical chip support up to 8224 bytes, but using 8192 bytes for now)
 //#define FPAGE_SIZE (8192*2)
@@ -526,10 +537,18 @@ int main(int argc, const char **argv)
 		// Functionality test
 		verbose_req = true;
 		verbose_resp = true;
-		int blkStart = 4086;
-		int blkCnt = 10;
+
+#if defined(SIMULATION)
+		int blkStart = 0;
+		int blkCnt = 4;
 		int pageStart = 0;
-		int pageCnt = 10;
+		int pageCnt = 2;
+#else
+		int blkStart = 0;
+		int blkCnt = 64; //BLOCKS_PER_CHIP;
+		int pageStart = 0;
+		int pageCnt = 4; //PAGES_PER_BLOCK;
+#endif
 
 		fprintf(stderr, "[TEST] ERASE RANGED BLOCKS (Start: %d, Cnt: %d) STARTED!\n", blkStart, blkCnt); 
 		testErase(device, blkStart, blkCnt);

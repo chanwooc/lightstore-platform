@@ -6,8 +6,6 @@ import Xilinx :: *;
 import XilinxCells :: *;
 import ConnectalXilinxCells::*;
 
-`include "ConnectalProjectConfig.bsv"
-
 import AuroraCommon::*;
 import AuroraGearbox::*;
 
@@ -26,16 +24,17 @@ interface AuroraIfc;
 endinterface
 
 (* synthesize *)
-module mkAuroraIntra#(Clock gt_clk_p, Clock gt_clk_n, Clock init_clk) (AuroraIfc);
-
-	Clock curClk <- exposeCurrentClock;
-	Reset curRst <- exposeCurrentReset;
+module mkAuroraIntra1#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110) (AuroraIfc);
+	Clock cur_clk <- exposeCurrentClock;
+	Reset cur_rst <- exposeCurrentReset;
 
 `ifndef BSIM
-	Clock init_clk_i = init_clk; // init_clk is configured to match the frequency of user_clk (110MHz) for Ultrascale designs
+	// init_clk is configured to match the frequency of user_clk (110MHz) for Ultrascale designs
+	//  vc707 (7-series) can also allows 110 MHz init clock frequency
+	Clock init_clk_i = clk110;
 
-	Reset system_rst <- mkAsyncReset(24, curRst, init_clk_i);  // system reset should be min 6 user_clk(110MHz) cycles
-	MakeResetIfc gt_rst_ifc <- mkReset(12, True, init_clk_i); // gt_reset should be min 6 init_clk cycles
+	Reset system_rst <- mkAsyncReset(16, cur_rst, init_clk_i);  // system reset should be min 6 user_clk(110MHz) cycles
+	MakeResetIfc gt_rst_ifc <- mkReset(8, True, init_clk_i); // gt_reset should be min 6 init_clk cycles
 	Reset gt_rst = gt_rst_ifc.new_rst;
 	AuroraImportIfc#(4) auroraIntraImport <- mkAuroraImport_8b10b_zcu(gt_clk_p, gt_clk_n, init_clk_i, system_rst, gt_rst);
 `else
@@ -128,7 +127,7 @@ module mkAuroraImport_8b10b_bsim (AuroraImportIfc#(4));
 	interface AuroraUserIfc user;
 		interface AuroraStatus status;
 			method Bit#(1) channel_up = laneUpR;
-			method Bit#(4) lane_up = {laneUpR, laneUpR, laneUpR, laneUpR};
+			method Bit#(4) lane_up = signExtend(laneUpR);
 			method Bit#(1) hard_err = 0;
 			method Bit#(1) soft_err = 0;
 			method Bit#(8) data_err_count = 0;
@@ -146,13 +145,13 @@ module mkAuroraImport_8b10b_bsim (AuroraImportIfc#(4));
 endmodule
 
 import "BVI" aurora_8b10b_zcu_exdes =
-module mkAuroraImport_8b10b_zcu#(Clock gt_clk_p, Clock gt_clk_n, Clock init_clk, Reset init_rst, Reset gt_rst) (AuroraImportIfc#(4));
+module mkAuroraImport_8b10b_zcu#(Clock gt_clk_p, Clock gt_clk_n, Clock init_clk, Reset init_rst_n, Reset gt_rst_n) (AuroraImportIfc#(4));
 	default_clock no_clock;
 	default_reset no_reset;
 
 	input_clock (INIT_CLK_IN) = init_clk;
-	input_reset (RESET_N) = init_rst;     // Bluespec Reset is Active Low (mapped to RESET_N)
-	input_reset (GT_RESET_N) = gt_rst;
+	input_reset (RESET_N) = init_rst_n;     // Bluespec Reset is Active Low (mapped to RESET_N)
+	input_reset (GT_RESET_N) = gt_rst_n;
 
 	output_clock aurora_clk(USER_CLK);
 	output_reset aurora_rst(USER_RST_N) clocked_by (aurora_clk);
@@ -160,7 +159,7 @@ module mkAuroraImport_8b10b_zcu#(Clock gt_clk_p, Clock gt_clk_n, Clock init_clk,
 	input_clock (GT_REFCLK_P) = gt_clk_p;
 	input_clock (GT_REFCLK_N) = gt_clk_n;
 
-	input_clock clk () <- exposeCurrentClock; // no physical clock ports, required only for external method pins RXN, RXP
+	input_clock clk() <- exposeCurrentClock;
 
 	interface Aurora_Pins aurora;
 		method rxn_in(RXN) enable((*inhigh*) rx_n_en) clocked_by(clk); // Action method requires a clock domain

@@ -8,38 +8,57 @@ import Vector::*;
 import Clocks::*;
 import Leds::*;
 
-//import ConnectalMemory::*;
-//import ConnectalMemTypes::*;
-//import MemReadEngine::*;
-//import MemWriteEngine::*;
 import Pipe::*;
 
 import AuroraGearbox::*;
 import AuroraCommon::*;
-import AuroraIntraZcu::*;
+import AuroraIntraFmc1::*;
+`ifdef FLASH_FMC2
+import AuroraIntraFmc2::*;
+`endif
 import ControllerTypes::*;
 import StreamingSerDes::*;
 
+// defined in ControllerTypes.bsv
+/*
+interface FlashCtrlUser;
+	method Action sendCmd (FlashCmd cmd);
+	method Action writeWord (Bit#(128) data, TagT tag);
+	method ActionValue#(Tuple2#(Bit#(128), TagT)) readWord ();
+	method ActionValue#(TagT) writeDataReq();
+	method ActionValue#(Tuple2#(TagT, StatusT)) ackStatus ();
+endinterface
+*/
 typedef TMul#(2, TAdd#(128, TLog#(NumTags))) SerInSz;
 
-interface FCZcuDebug;
+interface FCDebug;
 	method Tuple2#(DataIfc, PacketType) debugRecPacket();
 	method Tuple4#(Bit#(32), Bit#(32), Bit#(32), Bit#(32)) getDebugCnts;
+`ifdef LED_AURORA
 	method Bit#(LedsWidth) getAuroraStatus; // Chanwoo
+`endif
 endinterface
 
-interface FlashCtrlZcuIfc;
+interface FlashCtrlIfc;
 	interface FlashCtrlUser user;
 	interface Aurora_Pins#(4) aurora;
-	interface FCZcuDebug debug;
+	interface AuroraStatus#(4) auroraStatus;
+	interface FCDebug debug;
 endinterface
 
 
-module mkFlashCtrlZcu#(
-	Clock gtx_clk_p, Clock gtx_clk_n, Clock init_clk) (FlashCtrlZcuIfc);
+module mkFlashCtrl#(Bool isFMC1,
+	Clock gtx_clk_p, Clock gtx_clk_n, Clock clk110, Reset rst110) (FlashCtrlIfc);
 
-	//GTX-GTP Aurora
-	AuroraIfc auroraIntra <- mkAuroraIntra(gtx_clk_p, gtx_clk_n, init_clk);
+	AuroraIfc auroraIntra;
+	`ifdef FLASH_FMC2
+		if (isFMC1)
+			auroraIntra <- mkAuroraIntra1(gtx_clk_p, gtx_clk_n, clk110, rst110);
+		else
+			auroraIntra <- mkAuroraIntra2(gtx_clk_p, gtx_clk_n, clk110, rst110);
+	`else
+		auroraIntra <- mkAuroraIntra1(gtx_clk_p, gtx_clk_n, clk110, rst110);
+	`endif
 
 	FIFO#(FlashCmd) flashCmdQ <- mkSizedFIFO(16); //should not have back pressure
 	FIFO#(Tuple2#(Bit#(128), TagT)) wrDataQ <- mkSizedFIFO(16); //TODO size?
@@ -178,8 +197,6 @@ module mkFlashCtrlZcu#(
 	endrule
 	*/	
 
-
-			
 	interface FlashCtrlUser user;
 		method Action sendCmd (FlashCmd cmd); 
 			flashCmdQ.enq(cmd);
@@ -205,11 +222,12 @@ module mkFlashCtrlZcu#(
 		endmethod
 	endinterface
 
-	interface FCZcuDebug debug;
+	interface FCDebug debug;
 		method Tuple2#(DataIfc, PacketType) debugRecPacket();
 			return debugRecPacketV;
 		endmethod
 		method Tuple4#(Bit#(32), Bit#(32), Bit#(32), Bit#(32)) getDebugCnts = auroraIntra.getDebugCnts;
+`ifdef LED_AURORA
 		method Bit#(LedsWidth) getAuroraStatus; //Chanwoo
 			Bit#(LedsWidth) ret = 0;
 			ret[0] = auroraIntra.status.channel_up;
@@ -218,6 +236,7 @@ module mkFlashCtrlZcu#(
 			ret[6] = auroraIntra.status.soft_err;
 			return ret;
 		endmethod
+`endif
 	endinterface
 
 	interface Aurora_Pins aurora = auroraIntra.aurora;

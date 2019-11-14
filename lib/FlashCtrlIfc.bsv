@@ -1,5 +1,5 @@
 import ControllerTypes::*;
-import FlashCtrlZcu::*;
+import FlashCtrl::*;
 
 import Connectable::*;
 
@@ -15,7 +15,7 @@ typedef struct {
 	CardT card;
 } DualFlashAddr deriving (Bits, Eq, FShow);
 
-function FlashCtrlUser extractFlashCtrlUser(FlashCtrlZcuIfc a);
+function FlashCtrlUser extractFlashCtrlUser(FlashCtrlIfc a);
 	return a.user;
 endfunction
 

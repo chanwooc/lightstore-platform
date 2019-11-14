@@ -9,9 +9,9 @@ import RegFile::*;
 
 
 import AuroraGearbox::*;
-import AuroraIntraZcu::*;
+import AuroraIntraFmc1::*;
 import ControllerTypes::*;
-import FlashCtrlZcu::*;
+import FlashCtrl::*;
 import FlashBusModel::*;
 
 //simulator options
@@ -31,7 +31,7 @@ interface FlashCtrlUser;
 	method ActionValue#(TagT) writeDataReq();
 	method ActionValue#(Tuple2#(TagT, StatusT)) ackStatus ();
 endinterface
-interface FlashCtrlVirtexIfc;
+interface FlashCtrlIfc;
 	interface FlashCtrlUser user;
 	interface Aurora_Pins#(4) aurora;
 	interface FCVirtexDebug debug;
@@ -39,13 +39,18 @@ endinterface
 */
 
 
-
 (* synthesize *)
+`ifdef NAND_SIM
+(* descending_urgency = "forwardReads, forwardReads_1" *) 
+(* descending_urgency = "forwardWrDataReq, forwardWrDataReq_1" *)
+(* descending_urgency = "forwardAck, forwardAck_1" *)
+`else
 (* descending_urgency = "forwardReads, forwardReads_1, forwardReads_2, forwardReads_3, forwardReads_4, forwardReads_5, forwardReads_6, forwardReads_7" *) 
 (* descending_urgency = "forwardWrDataReq, forwardWrDataReq_1, forwardWrDataReq_2, forwardWrDataReq_3, forwardWrDataReq_4, forwardWrDataReq_5, forwardWrDataReq_6, forwardWrDataReq_7" *)
 (* descending_urgency = "forwardAck, forwardAck_1, forwardAck_2, forwardAck_3, forwardAck_4, forwardAck_5, forwardAck_6, forwardAck_7" *)
+`endif
 module mkFlashCtrlModel#(
-	Clock gtx_clk_p, Clock gtx_clk_n, Clock clk200) (FlashCtrlZcuIfc);
+	Clock gtx_clk_p, Clock gtx_clk_n, Clock init_clk, Reset init_rst) (FlashCtrlIfc);
 
 	//Flash bus models
 	Vector#(NUM_BUSES, FlashBusModelIfc) flashBuses <- replicateM(mkFlashBusModel());
@@ -56,8 +61,7 @@ module mkFlashCtrlModel#(
 	FIFO#(Tuple2#(TagT, StatusT)) ackQ <- mkSizedFIFO(64);
 	
 	//GTX-GTP Aurora. Unused in model
-	AuroraIfc auroraIntra <- mkAuroraIntra(gtx_clk_p, gtx_clk_n, clk200);
-
+	AuroraIfc auroraIntra <- mkAuroraIntra1(gtx_clk_p, gtx_clk_n, init_clk, init_rst);
 
 	//handle reads, acks, writedataReq
 	for (Integer b=0; b < valueOf(NUM_BUSES); b=b+1) begin
@@ -105,7 +109,7 @@ module mkFlashCtrlModel#(
 		endmethod
 	endinterface
 
-	interface FCZcuDebug debug = ?;
+	interface FCDebug debug = ?;
 
 	interface Aurora_Pins aurora = auroraIntra.aurora;
 
