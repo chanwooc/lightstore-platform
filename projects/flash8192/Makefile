@@ -18,6 +18,7 @@ BSVPATH += ../../lib \
 		   ../../platform/flash_ctrl/common \
 		   ../../platform/flash_ctrl/model_main \
 		   ../../platform/flash_ctrl/hw_main \
+		   ../../platform/aurora_intra/ \
 
 CONNECTALFLAGS += -D DataBusWidth=128 -D IMPORT_HOST_CLOCKS
 
@@ -30,9 +31,11 @@ ip.%:
 # per-platform definitions
 ifeq ($(BOARD), bluesim)
 CONNECTALFLAGS += --bscflags " -D BSIM -D NAND_SIM "
+CONNECTALFLAGS += --bsvpath ../../platform/aurora_intra/aurora_8b10b_zcu
 
 else ifeq ($(BOARD), verilator)
 CONNECTALFLAGS += --bscflags " -D BSIM -D NAND_SIM "
+CONNECTALFLAGS += --bsvpath ../../platform/aurora_intra/aurora_8b10b_zcu
 
 else ifeq ($(BOARD), zcu102)
 NOHOST_XDC = ../../misc/nohost_zcu.xdc

@@ -41,6 +41,7 @@ endinterface
 
 (* synthesize *)
 `ifdef NAND_SIM
+// only two buses
 (* descending_urgency = "forwardReads, forwardReads_1" *) 
 (* descending_urgency = "forwardWrDataReq, forwardWrDataReq_1" *)
 (* descending_urgency = "forwardAck, forwardAck_1" *)
