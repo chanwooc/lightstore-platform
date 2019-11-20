@@ -57,7 +57,7 @@
 //#define FPAGE_SIZE_VALID (8224)
 #define FPAGE_SIZE (8192)
 #define FPAGE_SIZE_VALID (8192)
-#define NUM_TAGS 128
+#define NUM_TAGS 64
 
 typedef enum {
 	UNINIT,
@@ -576,7 +576,7 @@ int main(int argc, const char **argv)
 
 		int repeat = 4;
 		int blkStart = 0;
-		int blkCnt = 256;
+		int blkCnt = 128;
 		int pageStart = 0;
 		int pageCnt = 32;
 

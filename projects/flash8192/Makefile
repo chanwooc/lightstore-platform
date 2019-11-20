@@ -20,6 +20,11 @@ BSVPATH += ../../lib \
 		   ../../platform/flash_ctrl/hw_main \
 
 CONNECTALFLAGS += -D DataBusWidth=128 -D IMPORT_HOST_CLOCKS
+CONNECTALFLAGS += -D DMA_WRITE_PIPELINED # This option only works with DMA-length=128 (Not on 8192)
+
+NUMBER_OF_RENGINES=2 # Flash Write (DMA Read)
+NUMBER_OF_WENGINES=1 # Flash Read  (DMA Write) # Needs a MemWriteEngine Patch
+CONNECTALFLAGS += -D NumReadClients=$(NUMBER_OF_RENGINES) -D NumWriteClients=$(NUMBER_OF_WENGINES) # --bscflags " -D NumWriteEngines=$(NUMBER_OF_WENGINES) "
 
 ip.%:
 	make gen.$(*)
@@ -45,13 +50,10 @@ PINOUT_FILE=pinout.zcu102.sw.json
 # Best Set-up for ZCU102 (2 Masters, 2 ReadEngines and 4 WriteEngines)
 NUMBER_OF_MASTERS=2
 PLATFORM_NUMBER_OF_MASTERS=2
-NUMBER_OF_RENGINES=2 # Flash Write (DMA Read)
-NUMBER_OF_WENGINES=4 # Flash Read  (DMA Write)
 
 # Connectal Main Clock: 175 MHz --> realmainclockpreiod=5.714
 # Connectal Main Clock: 200 MHz --> realmainclockpreiod=5 (Current)
 # Derived clock for Aurora Init Clock (110 MHz, T=9.090) --> real derivedclockpreiod=9.090
-CONNECTALFLAGS += -D NumReadClients=$(NUMBER_OF_RENGINES) -D NumWriteClients=$(NUMBER_OF_WENGINES)
 CONNECTALFLAGS += --mainclockperiod=5 --derivedclockperiod=9.090
 CONNECTALFLAGS += -D DEFAULT_NOPROGRAM=1    # To suppress automatic fpga program
 CONNECTALFLAGS += -D ZCU_AXI_SLAVE_START=2  # To bypass HPC0,1
@@ -73,10 +75,6 @@ aurora_intra: $(IPDIR)/$(BOARD)/aurora_8b10b_zcu/aurora_8b10b_zcu.xci
 
 else ifeq ($(BOARD), vc707g2)
 NOHOST_XDC = ../../misc/nohost_vc707.xdc
-
-NUMBER_OF_RENGINES=2 # Flash Write (DMA Read)
-NUMBER_OF_WENGINES=8 # Flash Read  (DMA Write)
-CONNECTALFLAGS += -D NumReadClients=$(NUMBER_OF_RENGINES) -D NumWriteClients=$(NUMBER_OF_WENGINES)
 
 CONNECTALFLAGS += --mainclockperiod=8 --derivedclockperiod=9.090
 CONNECTALFLAGS += -D DEFAULT_NOPROGRAM=1    # To suppress automatic fpga program
