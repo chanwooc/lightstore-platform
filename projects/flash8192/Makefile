@@ -88,7 +88,7 @@ CONNECTALFLAGS += \
 	--implconstraint ../../platform/aurora_intra/aurora_8b10b_vc707/aurora_8b10b_fmc1_exdes.xdc \
 	--implconstraint $(NOHOST_XDC)
 
-$(IPDIR)/$(BOARD)/aurora_8b10b_fmc1/aurora_8b10b_fmc1.xci: ../../coregen/synth-aurora-intra-zcu.tcl
+$(IPDIR)/$(BOARD)/aurora_8b10b_fmc1/aurora_8b10b_fmc1.xci: ../../coregen/synth-aurora-intra-vc707-fmc1.tcl
 	cd $(BOARD); vivado -mode batch -source ../../../coregen/synth-aurora-intra-vc707-fmc1.tcl
 
 aurora_intra: $(IPDIR)/$(BOARD)/aurora_8b10b_fmc1/aurora_8b10b_fmc1.xci
