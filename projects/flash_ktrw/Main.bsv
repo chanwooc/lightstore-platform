@@ -31,7 +31,7 @@ import AuroraCommon::*;
 import AuroraIntraZcu::*;
 
 import ControllerTypes::*;
-import FlashCtrlZcu::*;
+import FlashCtrl::*;
 import FlashCtrlModel::*;
 
 import LightStoreKtMerger::*; // LightStore Keytable Compaction Manager
@@ -137,9 +137,9 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//--------------------------------------------
 	GtClockImportIfc gt_clk_fmc1 <- mkGtClockImport;
 	`ifdef BSIM
-		FlashCtrlZcuIfc flashCtrl <- mkFlashCtrlModel(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock);
+		FlashCtrlIfc flashCtrl <- mkFlashCtrlModel(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock);
 	`else
-		FlashCtrlZcuIfc flashCtrl <- mkFlashCtrlZcu(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock);
+		FlashCtrlIfc flashCtrl <- mkFlashCtrlZcu(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock);
 	`endif
 
 	FlashSwitch#(4) flashSwitch <- mkFlashSwitch; // users[1] for normal IO & users[0,2] for kt-merging

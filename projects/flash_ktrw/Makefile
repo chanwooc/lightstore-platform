@@ -41,7 +41,7 @@ BSVFILES = Main.bsv \
 	../../platform/aurora_intra/AuroraIntraZcu.bsv \
 	../../platform/flash_ctrl/common/FlashBusModel.bsv \
 	../../platform/flash_ctrl/model_zcu/FlashCtrlModel.bsv \
-	../../platform/flash_ctrl/hw_zcu/FlashCtrlZcu.bsv
+	../../platform/flash_ctrl/hw_zcu/FlashCtrl.bsv
 
 CPPFILES=main.cpp
 
