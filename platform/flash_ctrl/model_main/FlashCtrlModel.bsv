@@ -113,6 +113,7 @@ module mkFlashCtrlModel#(
 	interface FCDebug debug = ?;
 
 	interface Aurora_Pins aurora = auroraIntra.aurora;
+	interface AuroraStatus auroraStatus = auroraIntra.status;
 
 endmodule
 

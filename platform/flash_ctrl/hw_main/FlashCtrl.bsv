@@ -240,5 +240,6 @@ module mkFlashCtrl#(Bool isFMC1,
 	endinterface
 
 	interface Aurora_Pins aurora = auroraIntra.aurora;
+	interface AuroraStatus auroraStatus = auroraIntra.status;
 
 endmodule

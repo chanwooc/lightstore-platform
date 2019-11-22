@@ -52,20 +52,28 @@
 ## XDC generated for xc7vx485t-ffg1761-2 device
 # 275.0MHz GT Reference clock constraint
 create_clock -name GT_REFCLK1 -period 3.636	 [get_pins -hier -regexp {.*/fmc1_gt_clk_i/O}]
+create_clock -name GT_REFCLK2 -period 3.636	 [get_pins -hier -regexp {.*/fmc2_gt_clk_i/O}]
 
 ####################### GT reference clock LOC #######################
+# FMC1
 set_property LOC E9 [get_ports aurora_clk_fmc1_gt_clk_n_v]
 set_property LOC E10 [get_ports aurora_clk_fmc1_gt_clk_p_v]
+# FMC2
+set_property LOC T7 [get_ports aurora_clk_fmc2_gt_clk_n_v]
+set_property LOC T8 [get_ports aurora_clk_fmc2_gt_clk_p_v]
 
-create_clock -name auroraI_user_clk_i -period 9.091	 [get_pins -hierarchical -regexp {.*/aurora_module_i/clock_module_i/user_clk_buf_i/O}]
+create_clock -name auroraI_user_clk_i_fmc1 -period 9.091 [get_pins -hierarchical -regexp {.*flashCtrls_0.*/aurora_module_i/clock_module_i/user_clk_buf_i/O}]
+create_clock -name auroraI_user_clk_i_fmc2 -period 9.091 [get_pins -hierarchical -regexp {.*flashCtrls_1.*/aurora_module_i/clock_module_i/user_clk_buf_i/O}]
 
 set portal_usrclk [get_clocks {clkgen_pll_CLKOUT1}]
 set auroraI_init_clk_i [get_clocks {clkgen_pll_CLKOUT0}]
 
 ###### CDC async group auroraI_user_clk_i and portal_usrclk ##############
 # set_clock_groups -asynchronous -group {auroraI_user_clk_i} -group $portal_usrclk
-set_max_delay -from {auroraI_user_clk_i} -to $portal_usrclk -datapath_only [get_property PERIOD $portal_usrclk]
-set_max_delay -from $portal_usrclk -to {auroraI_user_clk_i} -datapath_only [get_property PERIOD $portal_usrclk]
+set_max_delay -from {auroraI_user_clk_i_fmc1} -to $portal_usrclk -datapath_only [get_property PERIOD $portal_usrclk]
+set_max_delay -from $portal_usrclk -to {auroraI_user_clk_i_fmc1} -datapath_only [get_property PERIOD $portal_usrclk]
+set_max_delay -from {auroraI_user_clk_i_fmc2} -to $portal_usrclk -datapath_only [get_property PERIOD $portal_usrclk]
+set_max_delay -from $portal_usrclk -to {auroraI_user_clk_i_fmc2} -datapath_only [get_property PERIOD $portal_usrclk]
 
 
 ####### CDC async group auroraI_init_clk_i and portal_usrclk ##############
@@ -77,62 +85,12 @@ set_max_delay -from $portal_usrclk -to $auroraI_init_clk_i -datapath_only [get_p
 ###### CDC in RESET_LOGIC from INIT_CLK to USER_CLK ##############
 # set_clock_groups -asynchronous -group $auroraI_init_clk_i -group {auroraI_user_clk_i}
 set_false_path -to [get_pins -hier *cdc_to*/D]
-set_max_delay -from $auroraI_init_clk_i -to [get_clocks auroraI_user_clk_i] -datapath_only 9.091 
-
-
-###################### Locatoin constrain #########################
-#set_property LOC AJ32 [get_ports INIT_CLK_P]
-#set_property LOC AK32 [get_ports INIT_CLK_N]
-#set_property LOC AV39 [get_ports RESET]
-#set_property LOC AW40 [get_ports GT_RESET_IN]
-#set_property LOC AR37 [get_ports CHANNEL_UP]
-#set_property LOC AT37 [get_ports LANE_UP[0]]
-#set_property LOC AM39 [get_ports LANE_UP[1]]
-#set_property LOC AN39 [get_ports LANE_UP[2]]
-#set_property LOC AP40 [get_ports LANE_UP[3]]
-#set_property LOC G28 [get_ports HARD_ERR]   
-#set_property LOC G23 [get_ports SOFT_ERR]   
-#set_property LOC H23 [get_ports ERR_COUNT[0]]   
-#set_property LOC G27 [get_ports ERR_COUNT[1]]   
-#set_property LOC G26 [get_ports ERR_COUNT[2]]   
-#set_property LOC G22 [get_ports ERR_COUNT[3]]   
-#set_property LOC G21 [get_ports ERR_COUNT[4]]   
-#set_property LOC H26 [get_ports ERR_COUNT[5]]   
-#set_property LOC H25 [get_ports ERR_COUNT[6]]   
-#set_property LOC H21 [get_ports ERR_COUNT[7]]   
-#   
-# 
-#set_property LOC M32 [get_ports DRP_CLK_IN]
-##// DRP CLK needs a clock LOC
-#    
-#set_property IOSTANDARD LVDS [get_ports INIT_CLK_P]
-#set_property IOSTANDARD LVDS [get_ports INIT_CLK_N]
-#set_property IOSTANDARD LVCMOS18 [get_ports RESET]
-#set_property IOSTANDARD LVCMOS18 [get_ports GT_RESET_IN]
-#set_property IOSTANDARD LVCMOS18 [get_ports CHANNEL_UP]
-#set_property IOSTANDARD LVCMOS18 [get_ports LANE_UP[0]]
-#set_property IOSTANDARD LVCMOS18 [get_ports LANE_UP[1]]
-#set_property IOSTANDARD LVCMOS18 [get_ports LANE_UP[2]]
-#set_property IOSTANDARD LVCMOS18 [get_ports LANE_UP[3]]
-#set_property IOSTANDARD LVCMOS18 [get_ports HARD_ERR]   
-#set_property IOSTANDARD LVCMOS18 [get_ports SOFT_ERR]   
-#set_property IOSTANDARD LVCMOS18 [get_ports ERR_COUNT[0]]   
-#set_property IOSTANDARD LVCMOS18 [get_ports ERR_COUNT[1]]   
-#set_property IOSTANDARD LVCMOS18 [get_ports ERR_COUNT[2]]   
-#set_property IOSTANDARD LVCMOS18 [get_ports ERR_COUNT[3]]   
-#set_property IOSTANDARD LVCMOS18 [get_ports ERR_COUNT[4]]   
-#set_property IOSTANDARD LVCMOS18 [get_ports ERR_COUNT[5]]   
-#set_property IOSTANDARD LVCMOS18 [get_ports ERR_COUNT[6]]   
-#set_property IOSTANDARD LVCMOS18 [get_ports ERR_COUNT[7]]   
-#    
-#    
-#set_property IOSTANDARD SSTL15 [get_ports DRP_CLK_IN]
-##// DRP CLK needs a clock IOSTDLOC
-#    
-###################################################################
+set_max_delay -from $auroraI_init_clk_i -to [get_clocks auroraI_user_clk_i_fmc1] -datapath_only 9.091
+set_max_delay -from $auroraI_init_clk_i -to [get_clocks auroraI_user_clk_i_fmc2] -datapath_only 9.091 
 
 
 ############################### GT LOC ###################################
+# FMC1
 set_property LOC GTXE2_CHANNEL_X1Y20 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc1_i/inst/gt_wrapper_i/aurora_8b10b_fmc1_multi_gt_i/gt0_aurora_8b10b_fmc1_i/gtxe2_i}]
 set_property LOC GTXE2_CHANNEL_X1Y21 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc1_i/inst/gt_wrapper_i/aurora_8b10b_fmc1_multi_gt_i/gt1_aurora_8b10b_fmc1_i/gtxe2_i}]
 set_property LOC GTXE2_CHANNEL_X1Y22 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc1_i/inst/gt_wrapper_i/aurora_8b10b_fmc1_multi_gt_i/gt2_aurora_8b10b_fmc1_i/gtxe2_i}]
@@ -159,4 +117,31 @@ set_property LOC GTXE2_CHANNEL_X1Y23 [get_cells -hierarchical -regexp {.*aurora_
  set_property LOC E6 [get_ports { aurora_fmc1_RXP[0] }]
  set_property LOC E5 [get_ports { aurora_fmc1_RXN[0] }]
 
+# FMC2
+set_property LOC GTXE2_CHANNEL_X1Y12 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc2_i/inst/gt_wrapper_i/aurora_8b10b_fmc2_multi_gt_i/gt0_aurora_8b10b_fmc2_i/gtxe2_i}]
+set_property LOC GTXE2_CHANNEL_X1Y13 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc2_i/inst/gt_wrapper_i/aurora_8b10b_fmc2_multi_gt_i/gt1_aurora_8b10b_fmc2_i/gtxe2_i}]
+set_property LOC GTXE2_CHANNEL_X1Y14 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc2_i/inst/gt_wrapper_i/aurora_8b10b_fmc2_multi_gt_i/gt2_aurora_8b10b_fmc2_i/gtxe2_i}]
+set_property LOC GTXE2_CHANNEL_X1Y15 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc2_i/inst/gt_wrapper_i/aurora_8b10b_fmc2_multi_gt_i/gt3_aurora_8b10b_fmc2_i/gtxe2_i}]
+
+ # X1Y12
+ set_property LOC U2 [get_ports { aurora_fmc2_TXP[3] }]
+ set_property LOC U1 [get_ports { aurora_fmc2_TXN[3] }]
+ set_property LOC W6 [get_ports { aurora_fmc2_RXP[3] }]
+ set_property LOC W5 [get_ports { aurora_fmc2_RXN[3] }]
+  # X1Y13
+ set_property LOC T4 [get_ports { aurora_fmc2_TXP[2] }]
+ set_property LOC T3 [get_ports { aurora_fmc2_TXN[2] }]
+ set_property LOC V4 [get_ports { aurora_fmc2_RXP[2] }]
+ set_property LOC V3 [get_ports { aurora_fmc2_RXN[2] }]
+  # X1Y14
+ set_property LOC R2 [get_ports { aurora_fmc2_TXP[1] }]
+ set_property LOC R1 [get_ports { aurora_fmc2_TXN[1] }]
+ set_property LOC U6 [get_ports { aurora_fmc2_RXP[1] }]
+ set_property LOC U5 [get_ports { aurora_fmc2_RXN[1] }]
+ ### There is a mismatch for pin names of X1Y15 in xilinx PDFs this seems to work (ug885, page 65, FMC2_HPC_DP7 M2C C2M reversed
+  # X1Y15
+ set_property LOC P4 [get_ports { aurora_fmc2_TXP[0] }]
+ set_property LOC P3 [get_ports { aurora_fmc2_TXN[0] }]
+ set_property LOC R6 [get_ports { aurora_fmc2_RXP[0] }]
+ set_property LOC R5 [get_ports { aurora_fmc2_RXN[0] }]
 
