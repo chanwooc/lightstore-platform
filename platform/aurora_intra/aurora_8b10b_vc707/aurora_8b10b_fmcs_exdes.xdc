@@ -70,10 +70,10 @@ set auroraI_init_clk_i [get_clocks {clkgen_pll_CLKOUT0}]
 
 ###### CDC async group auroraI_user_clk_i and portal_usrclk ##############
 # set_clock_groups -asynchronous -group {auroraI_user_clk_i} -group $portal_usrclk
-set_max_delay -from {auroraI_user_clk_i_fmc1} -to $portal_usrclk -datapath_only [get_property PERIOD $portal_usrclk]
-set_max_delay -from $portal_usrclk -to {auroraI_user_clk_i_fmc1} -datapath_only [get_property PERIOD $portal_usrclk]
-set_max_delay -from {auroraI_user_clk_i_fmc2} -to $portal_usrclk -datapath_only [get_property PERIOD $portal_usrclk]
-set_max_delay -from $portal_usrclk -to {auroraI_user_clk_i_fmc2} -datapath_only [get_property PERIOD $portal_usrclk]
+set_max_delay -from [get_clocks auroraI_user_clk_i_fmc1] -to $portal_usrclk -datapath_only [get_property PERIOD $portal_usrclk]
+set_max_delay -from $portal_usrclk -to [get_clocks auroraI_user_clk_i_fmc1] -datapath_only [get_property PERIOD $portal_usrclk]
+set_max_delay -from [get_clocks auroraI_user_clk_i_fmc2] -to $portal_usrclk -datapath_only [get_property PERIOD $portal_usrclk]
+set_max_delay -from $portal_usrclk -to [get_clocks auroraI_user_clk_i_fmc2] -datapath_only [get_property PERIOD $portal_usrclk]
 
 
 ####### CDC async group auroraI_init_clk_i and portal_usrclk ##############
