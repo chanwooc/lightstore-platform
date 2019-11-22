@@ -17,7 +17,7 @@ module mkAuroraIntra2#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst11
 	Reset cur_rst <- exposeCurrentReset;
 
 `ifndef BSIM
-	Clock fmc2_gt_clk_i <- mkClockIBUFDS_GTE2(
+	let fmc2_gt_clk_i <- mkClockIBUFDS_GTE(
 `ifdef ClockDefaultParam
 						   defaultValue,
 `endif
@@ -30,7 +30,7 @@ module mkAuroraIntra2#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst11
 	Reset system_rst <- mkAsyncReset(16, cur_rst, init_clk_i);  // system reset should be min 6 user_clk(110MHz) cycles
 	MakeResetIfc gt_rst_ifc <- mkReset(8, True, init_clk_i); // gt_reset should be min 6 init_clk cycles
 	Reset gt_rst = gt_rst_ifc.new_rst;
-	AuroraImportIfc#(4) auroraIntraImport <- mkAuroraImport_8b10b_fmc2(fmc2_gt_clk_i, init_clk_i, system_rst, gt_rst);
+	AuroraImportIfc#(4) auroraIntraImport <- mkAuroraImport_8b10b_fmc2(fmc2_gt_clk_i.gen_clk, init_clk_i, system_rst, gt_rst);
 `else
 	AuroraImportIfc#(4) auroraIntraImport <- mkAuroraImport_8b10b_bsim;
 `endif
