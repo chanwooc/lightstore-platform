@@ -123,7 +123,7 @@ bool checkReadData(int tag) {
 		for (unsigned int word=0; word<FPAGE_SIZE_VALID/sizeof(unsigned int); word++) {
 			goldenData = hashAddrToData(e.bus, e.chip, e.block, word);
 			if (goldenData != readBuffers[tag][word]) {
-				fprintf(stderr, "LOG: **ERROR: read data mismatch! tag=%d, %d %d %d %d, word=%d, Expected: %x, read: %x\n", tag, e.bus, e.chip, e.block, e.page, word, goldenData, readBuffers[tag][word]);
+				fprintf(stderr, "LOG: **ERROR: read data mismatch! tag=%d, C%d %d %d %d %d, word=%d, Expected: %x, read: %x\n", tag, e.card, e.bus, e.chip, e.block, e.page, word, goldenData, readBuffers[tag][word]);
 				numErrors++;
 				pass = false;
 				break;
@@ -139,6 +139,7 @@ bool checkReadData(int tag) {
 		}
 		else if (readBuffers[tag][0]==0) {
 			fprintf(stderr, "LOG: Warning: potential bad block, read erased data 0\n");
+			fprintf(stderr, "LOG: tag=%d, C%d %d %d %d %d, Expected: %x, read: %x\n", tag, e.card, e.bus, e.chip, e.block, e.page, -1, readBuffers[tag][0]);
 			pass = false;
 		}
 		else {
