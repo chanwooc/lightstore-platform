@@ -43,7 +43,7 @@ CONNECTALFLAGS += --bscflags " -D BSIM -D NAND_SIM "
 CONNECTALFLAGS += --bsvpath ../../platform/aurora_intra/aurora_8b10b_vc707
 
 else ifeq ($(BOARD), vcu108)
-CONNECTALFLAGS += --mainclockperiod=6 --derivedclockperiod=9.090
+CONNECTALFLAGS += --mainclockperiod=5 --derivedclockperiod=9.090
 CONNECTALFLAGS += -D DEFAULT_NOPROGRAM=1    # To suppress automatic fpga program
 
 NOHOST_XDC = ../../misc/nohost_vcu108.xdc

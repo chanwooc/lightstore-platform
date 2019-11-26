@@ -22,8 +22,8 @@
 
 // Test Definitions
 // #define TEST_ERASE_ALL		 // eraseAll.exe's only test
-#define MINI_TEST_SUITE
-// #define TEST_READ_SPEED
+// #define MINI_TEST_SUITE
+#define TEST_READ_SPEED
 // #define TEST_WRITE_SPEED
 // #define KT_WRITE
 // #define KT_READ
@@ -55,9 +55,9 @@
 // Page Size (Physical chip support up to 8224 bytes, but using 8192 bytes for now)
 //#define FPAGE_SIZE (8192*2)
 //#define FPAGE_SIZE_VALID (8224)
-#define FPAGE_SIZE (8192)
+#define FPAGE_SIZE (8192*2)
 #define FPAGE_SIZE_VALID (8192)
-#define NUM_TAGS 64
+#define NUM_TAGS 96
 
 typedef enum {
 	UNINIT,
@@ -154,16 +154,17 @@ bool checkReadData(int tag) {
 	return pass;
 }
 
-class FlashIndication: public FlashIndicationWrapper {
-	public:
-		FlashIndication(unsigned int id) : FlashIndicationWrapper(id){}
+bool checker_done = false;
 
-		virtual void readDone(unsigned int tag) {
-
+void *check_read_buffer_done(void *ptr) {
+	int tag = 0;
+	int flag_word_offset = FPAGE_SIZE_VALID/sizeof(unsigned int);
+	while (!checker_done) {
+		if ( readBuffers[tag][flag_word_offset] == (unsigned int)-1 ) {
 			bool readPassed = false;
 
 			if ( verbose_resp ) {
-				fprintf(stderr, "LOG: pagedone: tag=%d; inflight=%d\n", tag, curReadsInFlight );
+				fprintf(stderr, "LOG: dma buffer (flash read) check done: tag=%d; inflight=%d\n", tag, curReadsInFlight );
 				fflush(stderr);
 			}
 
@@ -185,8 +186,22 @@ class FlashIndication: public FlashIndicationWrapper {
 			}
 
 			readTagTable[tag].busy = false;
+			readBuffers[tag][flag_word_offset] = 0; // clear done
 
 			pthread_mutex_unlock(&flashReqMutex);
+		}
+		tag = (tag+1)%NUM_TAGS;
+	}
+
+	return NULL;
+}
+
+class FlashIndication: public FlashIndicationWrapper {
+	public:
+		FlashIndication(unsigned int id) : FlashIndicationWrapper(id){}
+
+		virtual void readDone(unsigned int tag) {
+			fprintf(stderr, "LOG: **ERROR: readDone should have never come\n");
 		}
 
 		virtual void writeDone(unsigned int tag) {
@@ -516,6 +531,13 @@ int main(int argc, const char **argv)
 		}
 	}
 
+	// read done checker
+	pthread_t check_thread;
+	if(pthread_create(&check_thread, NULL, check_read_buffer_done, NULL)) {
+		fprintf(stderr, "Error creating thread\n");
+		return -1;
+	}
+
 	long actualFrequency=0;
 	long requestedFrequency=1e9/MainClockPeriod;
 	int status = setClockFrequency(0, requestedFrequency, &actualFrequency);
@@ -630,7 +652,7 @@ int main(int argc, const char **argv)
 		fprintf(stderr, "[TEST] WRITE SPEED DONE!\n" ); 
 
 		clock_gettime(CLOCK_REALTIME, & now);
-		fprintf(stderr, "SPEED: %f MB/s\n", (8192.0*NUM_BUSES*CHIPS_PER_BUS*blkCnt*pageCnt/1000000)/timespec_diff_sec(start,now));
+		fprintf(stderr, "SPEED: %f MB/s\n", (2*8192.0*NUM_BUSES*CHIPS_PER_BUS*blkCnt*pageCnt/1000000)/timespec_diff_sec(start,now));
 	}
 #endif
 
@@ -860,9 +882,15 @@ int main(int argc, const char **argv)
 	}
 
 	sleep(1);
+
+	checker_done = true;
+	pthread_join(check_thread, NULL);
+	fprintf(stderr, "Checker released\n");
+
 	dma->dereference(ref_srcAlloc);
 	dma->dereference(ref_dstAlloc);
 	portalMunmap(srcBuffer, srcAlloc_sz);
 	portalMunmap(dstBuffer, dstAlloc_sz);
 	fprintf(stderr, "Done releasing DMA!\n");
+
 }

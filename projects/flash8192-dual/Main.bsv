@@ -75,6 +75,8 @@ Integer wordsPerFlashPage = pageSizeUser/wordBytes; // 8224/16 = 514
 Integer wordsPer8192Page  = pageSize8192/wordBytes; // 8192/16 = 512
 Integer realBurstsPerPage = pageSize8192/dmaBurstBytes; // 64
 
+Integer padDmaExtra = wordBytes; // Send extra 16B instead of indication
+
 Integer dmaAllocPageSizeLog = 13; //typically portal alloc page size is 8KB; MUST MATCH SW
 Integer dmaLength = realBurstsPerPage * dmaBurstBytes; // 64 * 128 = 8192
 //Integer dmaAllocPageSizeLog = 14; //typically portal alloc page size is 16KB; MUST MATCH SW
@@ -95,7 +97,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Reg#(Bool) started <- mkReg(False);
 	Reg#(Bit#(64)) cycleCnt <- mkReg(0);
 
-	FIFO#(MultiFlashCmd) flashCmdQ <- mkSizedFIFO(valueOf(NumTags)); // FIFO 16 on Main FPGA / 128 on Artix FPGA
+	FIFO#(MultiFlashCmd) flashCmdQ <- mkSizedFIFO(valueOf(NumTags)/2); // FIFO 16 on Main FPGA / 128 on Artix FPGA
 	Vector#(NumTags, Reg#(BusT)) tag2busTable <- replicateM(mkRegU());
 
 	// Offset - pointer
@@ -123,7 +125,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	// DMA Module Instantiation
 	//--------------------------------------------
 	Vector#(NumReadClients, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TMul#(2, TDiv#(NUM_ENG_PORTS,NumReadClients)))) re <- replicateM(mkMemReadEngine);
-	Vector#(NumWriteClients, MemWriteEngine#(DataBusWidth, DataBusWidth, 4, TMul#(2, TDiv#(NUM_ENG_PORTS,NumWriteClients)))) we <- replicateM(mkMemWriteEngine);
+	Vector#(NumWriteClients, MemWriteEngine#(DataBusWidth, DataBusWidth, 4, TMul#(2, TDiv#(NUM_ENG_PORTS,NumWriteClients)))) we <- replicateM(mkMemWriteEngine); //<- replicateM(mkMemWriteEngineBuff(4*dmaBurstBytes));
 
 	function MemReadEngineServer#(DataBusWidth) getREServer( Integer card, Vector#(NumReadClients, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TMul#(2, TDiv#(NUM_ENG_PORTS,NumReadClients)))) rengine, Integer idx ) ;
 		//let numEngineServer = valueOf(TDiv#(NUM_ENG_PORTS,NumReadClients));
@@ -191,16 +193,16 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 	for (Integer c=0; c<2; c=c+1) begin
 		FIFO#(Tuple2#(Bit#(WordSz), TagT)) dataFlash2DmaQ <- mkFIFO();
-		Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBuf <- replicateM(mkSizedBRAMFIFO(dmaBurstWords*4)); // mkSizedBRAMFIFO
-		Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBufOut <- replicateM(mkFIFO());
+		Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBuf <- replicateM(mkFIFO); // replicateM(mkSizedBRAMFIFO(dmaBurstWords*4)); // mkSizedBRAMFIFO
+		Vector#(NUM_ENG_PORTS, FIFO#(Tuple2#(Bit#(WordSz), TagT))) dmaWriteBufOut <- replicateM(mkFIFO);
 
 		//Vector#(NUM_ENG_PORTS, Reg#(Bit#(8))) dmaWBurstCnts <- replicateM(mkReg(0));
 		//Vector#(NUM_ENG_PORTS, Reg#(Bit#(16))) dmaWBurstPerPageCnts <- replicateM(mkReg(0));
 		Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) wordPerPageCnts <- replicateM(mkReg(0));
 		Vector#(NUM_ENG_PORTS, Reg#(Bit#(8))) dmaWrReqCnts <- replicateM(mkReg(0));
 
-		Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWrReq2RespQ <- replicateM(mkSizedFIFO(16)); //TODO make bigger?
-		Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWriteReqQ <- replicateM(mkSizedFIFO(16));//TODO make bigger?
+		Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWrReq2RespQ <- replicateM(mkSizedFIFO(4)); //TODO make bigger?
+		Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaWriteReqQ <- replicateM(mkSizedFIFO(4));//TODO make bigger?
 
 		rule doEnqReadFromFlash;
 			if (delayReg==0) begin
@@ -224,8 +226,6 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 			let tag = tpl_2(taggedRdata);
 			let data = tpl_1(taggedRdata);
 			BusT bus = tag2busTable[tag];
-			//let bus = dmaWBus;
-			//dmaWBus <= dmaWBus + 1;
 			dmaWriteBuf[bus].enq(taggedRdata);
 			//$display("@%d Main.bsv: rdata tag=%d, bus=%d, data[%d,%d]=%x", cycleCnt, tag, bus,dmaWBurstPerPageCnts[bus], dmaWBurstCnts[bus], data);
 		endrule
@@ -248,6 +248,9 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 				if(wordPerPageCnts[b] < fromInteger(wordsPer8192Page)) begin // < 512
 					dmaWriteBufOut[b].enq(taggedRdata);
 				end
+				else if(wordPerPageCnts[b] == fromInteger(wordsPer8192Page)) begin
+					dmaWriteBufOut[b].enq(tuple2(-1, tag)); // signal dma done
+				end
 
 				if(wordPerPageCnts[b] == fromInteger(wordsPerFlashPage-1)) begin
 					wordPerPageCnts[b] <= 0;
@@ -259,7 +262,6 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 			//initiate dma pipeline
 			FIFO#(Tuple2#(TagT, Bit#(32))) dmaWriteReqPipe <- mkFIFO;
-			//FIFO#(TagT) dmaWriteReqPipe <- mkFIFO;
 			rule initiateDmaWritePipe;
 				dmaWriteReqQ[b].deq;
 				let tag = dmaWriteReqQ[b].first;
@@ -272,30 +274,20 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 				dmaWriteReqPipe.deq;
 				let tag = tpl_1(dmaWriteReqPipe.first);
 				let offset = tpl_2(dmaWriteReqPipe.first);
-				//Bit#(32) dmaOffset = offset + (zeroExtend(dmaWrReqCnts[b])<<log2(dmaBurstBytes));
 
 				let dmaCmd = MemengineCmd {
 									sglId: dmaWriteSgid, 
-									//base: zeroExtend(dmaOffset),
 									base: zeroExtend(offset),
-									//len:fromInteger(dmaBurstBytes), 
-									len:fromInteger(dmaLength), 
+									len:fromInteger(dmaLength+padDmaExtra), 
 									burstLen:fromInteger(dmaBurstBytes)
 								};
 
 				let weS = getWEServer(c,we,b);
 				weS.request.put(dmaCmd);
-				//dmaWrReq2RespQ[b].enq(tuple2(tag, dmaWrReqCnts[b]));
-				dmaWrReq2RespQ[b].enq(tag);
+				// dmaWrReq2RespQ[b].enq(tag);
 				
 				$display("@%d Main.bsv: init dma write tag=%d, bus=%d, base=0x%x, offset=%x",
 								cycleCnt, tag, b, dmaWriteSgid, offset);
-				//if (dmaWrReqCnts[b] == fromInteger(realBurstsPerPage-1)) begin
-				//	dmaWrReqCnts[b] <= 0;
-				//end
-				//else begin
-				//	dmaWrReqCnts[b] <= dmaWrReqCnts[b] + 1;
-				//end
 			endrule
 
 			Reg#(Bit#(1)) phase <- mkReg(0);
@@ -307,42 +299,29 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 				weS.data.enq(tpl_1(taggedRdata));
 			endrule
 
-			//dma response.get done; when enough has accumulated, send ack to sw
 			rule dmaWriteGetResponse;
 				let weS = getWEServer(c,we,b);
 				let dummy <- weS.done.get;
-				//let tagCnt = dmaWrReq2RespQ[b].first;
-				let tag = dmaWrReq2RespQ[b].first;
-				dmaWrReq2RespQ[b].deq;
-				$display("@%d Main.bsv: dma resp tag=%d", cycleCnt, tag);
-				//if (tpl_2(tagCnt)==fromInteger(realBurstsPerPage-1)) begin
-				//	//indication.readDone(zeroExtend(tpl_1(tagCnt)));
-				//	dmaWriteDoneQs[c][b].enq(tpl_1(tagCnt));
-				//end
-				dmaWriteDoneQs[c][b].enq(tag);
 
+				// let tag = dmaWrReq2RespQ[b].first;
+				// dmaWrReq2RespQ[b].deq;
+				// $display("@%d Main.bsv: dma resp tag=%d", cycleCnt, tag);
+				// dmaWriteDoneQs[c][b].enq(tag);
 			endrule
-
-	//		rule collectReadDone;
-	//			dmaWriteDoneQs[b].deq;
-	//			let tag = dmaWriteDoneQs[b].first;
-	//			indication.readDone(zeroExtend(tag));
-	//		endrule
-
 		end //for each bus
 	end //for each card
 
 
-	Vector#(TMul#(2, NUM_ENG_PORTS), PipeOut#(TagT)) dmaWriteDonePipes = map(toPipeOut, concat(dmaWriteDoneQs));
-	FunnelPipe#(1, TMul#(2, NUM_ENG_PORTS), TagT, 2) readAckFunnel <- mkFunnelPipesPipelined(dmaWriteDonePipes);
-	
-	FIFO#(TagT) readAckQ <- mkSizedFIFO(valueOf(NumTags)/2);
-	mkConnection(toGet(readAckFunnel[0]), toPut(readAckQ));
+	// Vector#(TMul#(2, NUM_ENG_PORTS), PipeOut#(TagT)) dmaWriteDonePipes = map(toPipeOut, concat(dmaWriteDoneQs));
+	// FunnelPipe#(1, TMul#(2, NUM_ENG_PORTS), TagT, 2) readAckFunnel <- mkFunnelPipesPipelined(dmaWriteDonePipes);
+	// 
+	// FIFO#(TagT) readAckQ <- mkSizedFIFO(valueOf(NumTags)/2);
+	// mkConnection(toGet(readAckFunnel[0]), toPut(readAckQ));
 
-	rule sendReadDone;
-		let tag <- toGet(readAckQ).get();
-		indication.readDone(zeroExtend(tag));
-	endrule
+	// rule sendReadDone;
+	// 	let tag <- toGet(readAckQ).get();
+	// 	// indication.readDone(zeroExtend(tag)); // No more indication
+	// endrule
 
 
 
@@ -353,8 +332,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 	for (Integer c=0; c<2; c=c+1) begin
 		FIFO#(Tuple2#(TagT, BusT)) wrToDmaReqQ <- mkFIFO();
-		Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaRdReq2RespQ <- replicateM(mkSizedFIFO(16)); //TODO sz
-		Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaReadReqQ <- replicateM(mkSizedFIFO(16));
+		Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaRdReq2RespQ <- replicateM(mkSizedFIFO(8)); //TODO sz
+		Vector#(NUM_ENG_PORTS, FIFO#(TagT)) dmaReadReqQ <- replicateM(mkSizedFIFO(8));
 		Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) dmaReadBurstCount <- replicateM(mkReg(0));
 		//Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) dmaRdReqCnts <- replicateM(mkReg(0));
 
