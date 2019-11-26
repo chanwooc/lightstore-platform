@@ -124,8 +124,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//--------------------------------------------
 	// DMA Module Instantiation
 	//--------------------------------------------
-	Vector#(NumReadClients, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TMul#(2, TDiv#(NUM_ENG_PORTS,NumReadClients)))) re <- replicateM(mkMemReadEngine);
-	Vector#(NumWriteClients, MemWriteEngine#(DataBusWidth, DataBusWidth, 4, TMul#(2, TDiv#(NUM_ENG_PORTS,NumWriteClients)))) we <- replicateM(mkMemWriteEngine); //<- replicateM(mkMemWriteEngineBuff(4*dmaBurstBytes));
+	Vector#(NumReadClients, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TMul#(2, TDiv#(NUM_ENG_PORTS,NumReadClients)))) re <- replicateM(mkMemReadEngineBuff(8*dmaBurstBytes));
+	Vector#(NumWriteClients, MemWriteEngine#(DataBusWidth, DataBusWidth, 4, TMul#(2, TDiv#(NUM_ENG_PORTS,NumWriteClients)))) we <- replicateM(mkMemWriteEngineBuff(4*dmaBurstBytes));
 
 	function MemReadEngineServer#(DataBusWidth) getREServer( Integer card, Vector#(NumReadClients, MemReadEngine#(DataBusWidth, DataBusWidth, 8, TMul#(2, TDiv#(NUM_ENG_PORTS,NumReadClients)))) rengine, Integer idx ) ;
 		//let numEngineServer = valueOf(TDiv#(NUM_ENG_PORTS,NumReadClients));

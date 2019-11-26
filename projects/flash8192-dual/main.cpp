@@ -22,8 +22,8 @@
 
 // Test Definitions
 // #define TEST_ERASE_ALL		 // eraseAll.exe's only test
-// #define MINI_TEST_SUITE
-#define TEST_READ_SPEED
+#define MINI_TEST_SUITE
+// #define TEST_READ_SPEED
 // #define TEST_WRITE_SPEED
 // #define KT_WRITE
 // #define KT_READ
@@ -57,7 +57,7 @@
 //#define FPAGE_SIZE_VALID (8224)
 #define FPAGE_SIZE (8192*2)
 #define FPAGE_SIZE_VALID (8192)
-#define NUM_TAGS 96
+#define NUM_TAGS 128
 
 typedef enum {
 	UNINIT,
@@ -645,6 +645,9 @@ int main(int argc, const char **argv)
 
 		timespec start, now;
 		clock_gettime(CLOCK_REALTIME, &start);
+
+		fprintf(stderr, "[TEST] Erase before write test (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", blkStart, blkCnt, pageStart, pageCnt); 
+		testErase(device, blkStart, blkCnt);
 
 		fprintf(stderr, "[TEST] WRITE SPEED (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", blkStart, blkCnt, pageStart, pageCnt); 
 		testWrite(device, blkStart, blkCnt, pageStart, pageCnt, false);
