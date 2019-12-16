@@ -42,6 +42,8 @@ interface LightStoreKtMerger;
 	method ActionValue#(Tuple3#(Bit#(32), Bit#(32), Bit#(64))) mergeDone;
 //	method ActionValue#(Bit#(32)) invalPpaDone;
 
+	method ActionValue#(Bit#(32)) mergePerPageDone;
+
 // FIXME: below are methods for testing
 //	method ActionValue#(Tuple5#(Bit#(32), Bit#(32), Bit#(32), Bit#(32), Bit#(32))) pageReadIssued;
 //	method ActionValue#(Tuple6#(Bit#(1),Bit#(32),Bit#(32),Bit#(32),Bit#(32),Bit#(32))) pageConsumed;
@@ -255,7 +257,7 @@ module mkLightStoreKtMerger #(
 	Reg#(Bit#(2)) phase1 <- mkReg(0);
 	Vector#(4, FIFO#(Tuple2#(Bool,Bit#(128)))) dmaWriteOut <- replicateM(mkSizedBRAMFIFO(512));
 	FIFO#(Bool) dmaWriteReqQ <- mkFIFO;
-	Vector#(4, FIFO#(Bool)) dmaWriteReqToRespQ <- replicateM(mkSizedFIFO(8));
+	Vector#(4, FIFO#(Tuple2#(Bool, Bit#(32)))) dmaWriteReqToRespQ <- replicateM(mkSizedFIFO(8));
 
 	rule getMergedKeytable;
 		let d <- ktMerger.getMergedKt();
@@ -291,7 +293,7 @@ module mkLightStoreKtMerger #(
 		};
 		wsV[phase2].request.put(dmaCmd);
 
-		dmaWriteReqToRespQ[phase2].enq(False);
+		dmaWriteReqToRespQ[phase2].enq(tuple2(False, ktResultReqSent));
 
 		if(!dmaWriteReqQ.first) begin
 			ktResultReqSent <= ktResultReqSent + 1;
@@ -306,10 +308,10 @@ module mkLightStoreKtMerger #(
 
 	rule trigLastPage;
 		let num <- toGet(ktLastPageTrig).get;
-		dmaWriteReqToRespQ[0].enq(True);
-		dmaWriteReqToRespQ[1].enq(True);
-		dmaWriteReqToRespQ[2].enq(True);
-		dmaWriteReqToRespQ[3].enq(True);
+		dmaWriteReqToRespQ[0].enq(tuple2(True, ?));
+		dmaWriteReqToRespQ[1].enq(tuple2(True, ?));
+		dmaWriteReqToRespQ[2].enq(tuple2(True, ?));
+		dmaWriteReqToRespQ[3].enq(tuple2(True, ?));
 
 		// initiate flash write
 		addrManager.startGetPpaDest(num);
@@ -330,14 +332,17 @@ module mkLightStoreKtMerger #(
 		counter <= counter+1;
 	endrule
 
+	FIFO#(Bit#(32)) mergePerPageDoneQ <- mkSizedFIFO(8);
 	Vector#(4,FIFO#(Bit#(32))) ktGeneratedDone <- replicateM(mkFIFO);
 	for (int i=0; i<4; i=i+1) begin
 		Reg#(Bit#(32)) ktGenerated <- mkReg(0);
 		rule dmaWriteGetResponse;
 			dmaWriteReqToRespQ[i].deq;
-			if (!dmaWriteReqToRespQ[i].first) begin
+			if (!tpl_1(dmaWriteReqToRespQ[i].first)) begin
 				let dummy <- wsV[i].done.get;
 				ktGenerated <= ktGenerated + 1;
+
+				mergePerPageDoneQ.enq(tpl_2(dmaWriteReqToRespQ[i].first));
 
 				if (i==0) begin
 					if(ktGenerated==0) 
@@ -381,6 +386,7 @@ module mkLightStoreKtMerger #(
 
 	method ActionValue#(Bit#(32)) getPpaDest = addrManager.getPpaDest;
 	method ActionValue#(Tuple3#(Bit#(32), Bit#(32), Bit#(64))) mergeDone = toGet(mergeDoneQ).get;
+	method ActionValue#(Bit#(32)) mergePerPageDone = toGet(mergePerPageDoneQ).get;
 	//method ActionValue#(Bit#(32)) invalPpaDone = toGet(invalPpaDoneQ).get;
 
 // FIXME: below are methods for testing

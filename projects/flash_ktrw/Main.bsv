@@ -28,7 +28,6 @@ import XilinxCells ::*;
 `endif
 
 import AuroraCommon::*;
-import AuroraIntraZcu::*;
 
 import ControllerTypes::*;
 import FlashCtrl::*;
@@ -73,18 +72,23 @@ interface FlashIndication;
 	method Action eraseDone(Bit#(32) tag, Bit#(32) status);
 	method Action debugDumpResp(Bit#(32) debug0, Bit#(32) debug1, Bit#(32) debug2, Bit#(32) debug3, Bit#(32) debug4, Bit#(32) debug5);
 
+	//  when merged KTs are generated and loaded to host memory (Not yet flushed to flash)
 	method Action mergeDone(Bit#(32) numGenKt, Bit#(32) numInvalAddr, Bit#(64) counter);
-	method Action mergeFlushDone1(Bit#(32) num);
+
+	//  when flash-write reqs are all generated for the merged KTs
+	//   (Might have in-flight host dma read and flash write)
+	//   (However, next compaction will not start until all the writes are completed)
+	method Action mergeFlushDone1(Bit#(32) num); // num is just a place-holder
+
+	// OLD Meaning (Deprecated)
+	//  when flash-write of merged KTs are all finished
+	//   (This was not used by SW. HW made sure that next compaction starts when this condition meets)
+	// NEW Meaning
+	//  for every generated KT, we notify SW using this.
+	//  Before mergeDone(numKt, ...), we will see mergeFlushDone2 with num = 0, 1, 2, 3, ..., numKt-1
 	method Action mergeFlushDone2(Bit#(32) num);
-	
+
 	method Action findKeyDone(Bit#(16) tag, Bit#(16) status, Bit#(32) ppa);
-
-// FIXME: indications for testing
-//	method Action debug1(Bit#(32) d, Bit#(32) e, Bit#(32) f);
-//	method Action debug2(Bit#(32) d);
-//	method Action debug3(Bit#(32) d, Bit#(32) e);
-
-//	method Action invalPpaDone(Bit#(32) numInvalPpa);
 endinterface
 
 typedef 256 DmaBurstBytes; 
@@ -117,6 +121,7 @@ endinterface
 
 module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indication)(MainIfc);
 	Clock init_clock = derivedClock;
+	Reset init_reset = derivedReset;
 
 	Reg#(Bool) started <- mkReg(False);
 	Reg#(Bit#(64)) cycleCnt <- mkReg(0);
@@ -137,9 +142,9 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//--------------------------------------------
 	GtClockImportIfc gt_clk_fmc1 <- mkGtClockImport;
 	`ifdef BSIM
-		FlashCtrlIfc flashCtrl <- mkFlashCtrlModel(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock);
+		FlashCtrlIfc flashCtrl <- mkFlashCtrlModel(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock, init_reset);
 	`else
-		FlashCtrlIfc flashCtrl <- mkFlashCtrlZcu(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock);
+		FlashCtrlIfc flashCtrl <- mkFlashCtrl(True /* isFMC1 */, gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock, init_reset);
 	`endif
 
 	FlashSwitch#(4) flashSwitch <- mkFlashSwitch; // users[1] for normal IO & users[0,2] for kt-merging
@@ -197,6 +202,11 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 			ktWriteQinit <= True;
 	endrule
 
+	rule mergePerPageDone; // Added signal (per-page merge done)
+		let curKt <- ktMergeManager.mergePerPageDone;
+		indication.mergeFlushDone2(curKt); // {0, 1, 2, ..., numKt-1} before mergeDone
+	endrule
+
 	rule mergeDone;
 		let {numKt, numInvalAddr, counter} <- ktMergeManager.mergeDone;
 		indication.mergeDone(numKt, numInvalAddr, counter);
@@ -214,7 +224,6 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		let ppa <- ktMergeManager.getPpaDest;
 		let addr = toDualFlashAddr(ppa);
 
-//		indication.debug1(ppa, ktsToFlush, reqSent);
 
 		FlashCmd fcmd = FlashCmd{
 			tag: zeroExtend(newtag),
@@ -418,16 +427,12 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) dmaReadBurstCount <- replicateM(mkReg(0));
 	//Vector#(NUM_ENG_PORTS, Reg#(Bit#(32))) dmaRdReqCnts <- replicateM(mkReg(0));
 
-//	Reg#(Bit#(32)) debug2cnt <- mkReg(0);
 	rule handleMergedKtDataRequestFromFlash;
 		TagT tag <- ktWriteUser.writeDataReq();
 		//check which bus it's from
 		Bit#(TLog#(TDiv#(NumTags,2))) ttag = truncate(tag);
 		let bus = tag2busTableMerge[ttag];
 		wrToDmaReqQ.enq(tuple3(tag, bus, False)); // compaction IO
-
-//		debug2cnt <= debug2cnt + 1;
-//		indication.debug2(debug2cnt);
 	endrule
 
 	//Handle write data requests from controller
@@ -448,7 +453,6 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	for (Integer b=0; b<valueOf(NUM_ENG_PORTS); b=b+1) begin
 		rule initDmaRead;
 			let {tag, hostIO} = dmaReadReqQ[b].first;
-//			indication.debug3(extend(tag), extend(pack(hostIO)));
 
 			Bit#(TLog#(TDiv#(NumTags,2))) ttag = truncate(tag);
 			let offset = (hostIO)?dmaReadOffset[tag]:dmaKtMergedOffset[ttag];
@@ -564,7 +568,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 				if(ktWriteReqDone.notEmpty&&(numKtWritten==ktWriteReqDone.first-1)) begin
 					ktWriteReqDone.deq;
 					numKtWritten <= 0;
-					indication.mergeFlushDone2(0);
+					// indication.mergeFlushDone2(0); // (OLD usage)
 					busyCompaction[0] <= False;
 				end
 				else begin

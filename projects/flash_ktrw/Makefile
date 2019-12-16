@@ -9,7 +9,6 @@ MEM_WRITE_INTERFACES=lMain.dmaWriteClient
 # Pin declaration
 PIN_TYPE=Top_Pins
 PIN_TYPE_INCLUDE=Top_Pins
-PINOUT_FILE=pinout.sw.json
 AUTOTOP=--interface pins:Main.pins
 
 # Best Set-up for ZCU102 (2 Masters, 2 ReadEngines and 4 WriteEngines)
@@ -34,31 +33,33 @@ CONNECTALFLAGS += -D ZCU_AXI_SLAVE_START=2  # To bypass HPC0,1
 CONNECTALFLAGS += -D DEFAULT_NOPROGRAM=1    # To suppress automatic fpga program
 CONNECTALFLAGS += -D MMU_INDEX_WIDTH=11     # To support larger MMU table (portalAlloc up to 2GB) // 13->Upto 8GB
 
-BSVFILES = Main.bsv \
-	../../modules/keytable_merger/LightStoreKtMerger.bsv \
-	../../modules/keytable_searcher/LightStoreKtSearcher.bsv \
-	../../lib/LibDummy.bsv \
-	../../platform/aurora_intra/AuroraIntraZcu.bsv \
-	../../platform/flash_ctrl/common/FlashBusModel.bsv \
-	../../platform/flash_ctrl/model_zcu/FlashCtrlModel.bsv \
-	../../platform/flash_ctrl/hw_zcu/FlashCtrl.bsv
+BSVFILES = Main.bsv
+CPPFILES = main.cpp
 
-CPPFILES=main.cpp
+BSVPATH += ../../lib \
+	../../modules/keytable_merger \
+	../../modules/keytable_searcher \
+	../../platform/flash_ctrl/common \
+	../../platform/flash_ctrl/model_main \
+	../../platform/flash_ctrl/hw_main \
+	../../platform/aurora_intra/aurora_8b10b_zcu \
 
 
 ifeq ($(BOARD), bluesim)
-CONNECTALFLAGS += -D BSIM
+CONNECTALFLAGS += --bscflags " -D BSIM -D NAND_SIM "
 else ifeq ($(BOARD), verilator)
-CONNECTALFLAGS += -D BSIM
+CONNECTALFLAGS += --bscflags " -D BSIM -D NAND_SIM "
 else
 NOHOST_XDC = ../../misc/nohost_zcu.xdc
+CONNECTALFLAGS += --bscflags " -D LED_AURORA"
+PINOUT_FILE=pinout.sw.json
 
 CONNECTALFLAGS += \
-	--verilog ../../platform/aurora_intra/xilinx/ \
+	--verilog ../../platform/aurora_intra/aurora_8b10b_zcu/ \
 	--xci $(CONNECTALDIR)/out/$(BOARD)/aurora_8b10b_zcu/aurora_8b10b_zcu.xci \
-	--constraint ../../platform/aurora_intra/xilinx/aurora_8b10b_zcu_exdes.xdc \
+	--constraint ../../platform/aurora_intra/aurora_8b10b_zcu/aurora_8b10b_zcu_exdes.xdc \
 	--constraint $(NOHOST_XDC) \
-	--implconstraint ../../platform/aurora_intra/xilinx/aurora_8b10b_zcu_exdes.xdc \
+	--implconstraint ../../platform/aurora_intra/aurora_8b10b_zcu/aurora_8b10b_zcu_exdes.xdc \
 	--implconstraint $(NOHOST_XDC) 
 
 $(IPDIR)/$(BOARD)/aurora_8b10b_zcu/aurora_8b10b_zcu.xci: ../../coregen/synth-aurora-intra-zcu.tcl
