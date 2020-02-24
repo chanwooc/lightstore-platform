@@ -28,7 +28,6 @@ import XilinxCells ::*;
 `endif
 
 import AuroraCommon::*;
-import AuroraIntraZcu::*;
 
 import ControllerTypes::*;
 import FlashCtrl::*;
