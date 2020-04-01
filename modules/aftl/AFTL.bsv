@@ -153,7 +153,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	BRAM_Configure map_conf = defaultValue;
 	map_conf.latency = 2; // output register; TODO: 2-cycle latency for reads; better timing?
 	map_conf.outFIFODepth = 4;
-	BRAM2Port#(Bit#(TAdd#(SegmentTSz, VirtBlkTSz)), MapEntry) map <- mkBRAM2Server(map_conf);
+	BRAM2Port#(Bit#(TAdd#(SegmentTSz, VirtBlkTSz)), MapEntry) blockmap <- mkBRAM2Server(map_conf);
 
 	// ** Block Info Table **
 	//   addr: {Card, Bus, Chip, Block} >> BlkInfoSelSz;
@@ -181,7 +181,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 				procQ.enq( ftlCmd );
 				let addr = { getSegmentT(ftlCmd.lpa), getVirtBlkT(ftlCmd.lpa) };
 
-				map.portA.request.put (
+				blockmap.portA.request.put (
 					BRAMRequest{write: False, responseOnWrite: False, address: addr, datain: ?}
 				);
 			end
@@ -194,7 +194,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 
 	rule procMapFlashRead ( procQ.first.op == READ_PAGE );
 		if(verbose) $display("procMapRead, %d", cnt);
-		let mapEntry <- map.portA.response.get;
+		let mapEntry <- blockmap.portA.response.get;
 		let lpa = procQ.first.lpa;
 
 		case (mapEntry.status)
@@ -228,7 +228,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 
 	rule procMapFlashErase0 ( procQ.first.op == ERASE_BLOCK && phaseErase == 0 );
 		if(verbose) $display("erase0, %d", cnt);
-		let mapEntry <- map.portA.response.get;
+		let mapEntry <- blockmap.portA.response.get;
 		let lpa = procQ.first.lpa;
 
 		let oneFlashCmd = FlashCmd {
@@ -252,7 +252,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 				// Update block map -> NOT_ALLOCATED
 				//  This should be visible to the very next cmd in req -> procQ should be mkFIFO1
 				let addr = { getSegmentT(procQ.first.lpa), getVirtBlkT(procQ.first.lpa) };
-				map.portA.request.put ( 
+				blockmap.portA.request.put ( 
 					BRAMRequest{write: True, responseOnWrite: False, address: addr, datain: MapEntry{status: NOT_ALLOCATED, block: 0}}
 				);
 
@@ -283,9 +283,18 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		phaseErase <= 2;
 	endrule
 
+	function BlkInfoEntry muxBlkInfoEntry( Bit#(1) sel, BlkInfoEntry a0, BlkInfoEntry a1 );
+		return sel==0?a0:a1;
+	endfunction
+
+	function BlkInfoEntry eraseBlkInfoEntry( BlkInfoEntry entry );
+		return BlkInfoEntry{status: FREE_BLK, erase: entry.erase+1};
+	endfunction
+
 	rule procMapFlashErase2 ( procQ.first.op == ERASE_BLOCK && phaseErase == 2 );
 		if(verbose) $display("erase2, %d", cnt);
 		let blkinfo_vec <- blkinfo.portA.response.get;
+		let blkinfo_vec_erased = map(eraseBlkInfoEntry, blkinfo_vec);
 
 		BusT bus = curEraseCmd.fcmd.bus;
 		ChipT chip = curEraseCmd.fcmd.chip;
@@ -294,11 +303,13 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		let addr = {curEraseCmd.card, bus, chip, block} >> valueOf(BlkInfoSelSz);
 
 		BlkInfoSelT sel = truncate(block);
-		blkinfo_vec[sel] = BlkInfoEntry{status: FREE_BLK, erase: blkinfo_vec[sel].erase+1};
+		//blkinfo_vec[sel] = BlkInfoEntry{status: FREE_BLK, erase: blkinfo_vec[sel].erase+1};
+		Bit#(16) sel_vec = 1 << sel;
+
+		let new_blkinfo_vec = zipWith3(muxBlkInfoEntry, unpack(sel_vec), blkinfo_vec, blkinfo_vec_erased);
 
 		blkinfo.portA.request.put (
-			// BRAMRequestBE{writeen: '1, responseOnWrite: False, address: truncate(addr), datain: blkinfo_vec}
-			BRAMRequest{write: True, responseOnWrite: False, address: truncate(addr), datain: blkinfo_vec}
+			BRAMRequest{write: True, responseOnWrite: False, address: truncate(addr), datain: new_blkinfo_vec}
 		);
 
 		procQ.deq;
@@ -350,7 +361,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 
 	rule procMapFlashWrite0 ( procQ.first.op == WRITE_PAGE && phaseWrite == 0 );
 		if(verbose) $display("write0, %d", cnt);
-		let mapEntry <- map.portA.response.get;
+		let mapEntry <- blockmap.portA.response.get;
 		let lpa = procQ.first.lpa;
 
 		let oneFlashCmd = FlashCmd {
@@ -454,7 +465,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 			let mapEntry = MapEntry{status: ALLOCATED, block: zeroExtend(block)};
 			let addr_map = { getSegmentT(procQ.first.lpa), getVirtBlkT(procQ.first.lpa) };
 
-			map.portA.request.put ( 
+			blockmap.portA.request.put ( 
 				BRAMRequest{ write: True, responseOnWrite: False, address: addr_map, datain: mapEntry }
 			);
 
@@ -499,6 +510,6 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	interface translateReq = toPut(reqQ);
 	interface resp = toGet(respQ);
 	interface respError = toGet(resp_errorQ);
-	interface map_portB = map.portB;
+	interface map_portB = blockmap.portB;
 	interface blkinfo_portB = blkinfo.portB;
 endmodule
