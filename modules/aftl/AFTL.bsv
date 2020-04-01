@@ -17,6 +17,8 @@ import MyTypes::*;
 
 import Clocks::*;
 
+Bool verbose = False;
+
 // ** LPA Structure **
 //   Virtual Block # format:
 //      [ Chip # lower N-bit ][ Bus # ][ Card # ]
@@ -78,7 +80,8 @@ endfunction
 `ifndef BSIM
 // DRAM FFFF
 // BRAM 0000
-typedef enum { NOT_ALLOCATED, ALLOCATED, DEAD } MapStatus deriving (Bits, Eq);
+// typedef enum { NOT_ALLOCATED, ALLOCATED, DEAD } MapStatus deriving (Bits, Eq);
+typedef enum { DEAD, ALLOCATED, NOT_ALLOCATED } MapStatus deriving (Bits, Eq);
 `else
 // For testing. At BSIM, RAM is initialized to AAAAAAA
 typedef enum { DEAD, ALLOCATED, NOT_ALLOCATED } MapStatus deriving (Bits, Eq);
@@ -97,7 +100,8 @@ typedef struct {
 `ifndef BSIM
 // DRAM FFFF
 // BRAM 0000
-typedef enum { FREE_BLK, DIRTY_BLK, CLEAN_BLK, BAD_BLK } BlkStatus deriving (Bits, Eq);
+// typedef enum { FREE_BLK, DIRTY_BLK, CLEAN_BLK, BAD_BLK } BlkStatus deriving (Bits, Eq);
+typedef enum { BAD_BLK, DIRTY_BLK, FREE_BLK, CLEAN_BLK } BlkStatus deriving (Bits, Eq);
 `else
 // For testing. At BSIM, RAM is initialized to AAAAAAA
 typedef enum { BAD_BLK, DIRTY_BLK, FREE_BLK, CLEAN_BLK } BlkStatus deriving (Bits, Eq);
@@ -165,7 +169,13 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	//FIFO#(FTLCmd) procQ <- mkPipelinedFIFO; // Size == 1, Only 1 req in-flight
 	FIFOF#(FTLCmd) procQ <- mkFIFOF1; // Size == 1, Only 1 req in-flight
 
+	Reg#(Bit#(32)) cnt <- mkReg(0);
+	rule cntup;
+		cnt <= cnt+1;
+	endrule
+
 	rule requestReadMap (!procQ.notEmpty); // do only if the procQ is empty (strict guard for conflicts)
+		if(verbose) $display("reqReadMap, %d", cnt);
 		let ftlCmd <- toGet(reqQ).get;
 
 		case(ftlCmd.op)
@@ -185,6 +195,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	endrule
 
 	rule procMapFlashRead ( procQ.first.op == READ_PAGE );
+		if(verbose) $display("procMapRead, %d", cnt);
 		let mapEntry <- map.portA.response.get;
 		let lpa = procQ.first.lpa;
 
@@ -218,6 +229,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	Reg#(MultiFlashCmd) curEraseCmd <- mkRegU;
 
 	rule procMapFlashErase0 ( procQ.first.op == ERASE_BLOCK && phaseErase == 0 );
+		if(verbose) $display("erase0, %d", cnt);
 		let mapEntry <- map.portA.response.get;
 		let lpa = procQ.first.lpa;
 
@@ -258,6 +270,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	endrule
 
 	rule procMapFlashErase1 ( procQ.first.op == ERASE_BLOCK && phaseErase == 1 );
+		if(verbose) $display("erase1, %d", cnt);
 		// card (optional, will be truncated if one card), bus, chip, block_upper bits
 		BusT bus = curEraseCmd.fcmd.bus;
 		ChipT chip = curEraseCmd.fcmd.chip;
@@ -273,6 +286,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	endrule
 
 	rule procMapFlashErase2 ( procQ.first.op == ERASE_BLOCK && phaseErase == 2 );
+		if(verbose) $display("erase2, %d", cnt);
 		let blkinfo_vec <- blkinfo.portA.response.get;
 
 		BusT bus = curEraseCmd.fcmd.bus;
@@ -314,7 +328,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		else begin
 			//compare only if FREE_BLK
 			Bit#(14) minBlk = (zeroExtend( blockScanRespCounter ) << valueOf(BlkInfoSelSz)) + fromInteger(idx);
-			//$display("[func] ");
+			//if(verbose) $display("[func] ");
 			case ( isValid(prevMin) && tpl_2(fromMaybe2(prevMin)) <= blkEntry.erase )
 				True:  return prevMin;
 				False: return tagged Valid tuple2( minBlk , blkEntry.erase);
@@ -337,6 +351,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	endfunction
 
 	rule procMapFlashWrite0 ( procQ.first.op == WRITE_PAGE && phaseWrite == 0 );
+		if(verbose) $display("write0, %d", cnt);
 		let mapEntry <- map.portA.response.get;
 		let lpa = procQ.first.lpa;
 
@@ -376,6 +391,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	endrule
 
 	rule procMapFlashWrite1req ( procQ.first.op == WRITE_PAGE && phaseWrite == 1 && blockScanReqCounter < max_block_scan_req );
+		if(verbose) $display("write1req, %d", cnt);
 		blockScanReqCounter <= blockScanReqCounter + 1;
 
 		BusT bus = curWriteCmd.fcmd.bus;
@@ -392,6 +408,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	endrule
 
 	rule procMapFlashWrite1resp ( procQ.first.op == WRITE_PAGE && phaseWrite == 1 && blockScanRespCounter < max_block_scan_req );
+		if(verbose) $display("write1resp, %d", cnt);
 		blockScanRespCounter <= blockScanRespCounter + 1;
 		let blkinfo_vec <- blkinfo.portA.response.get;
 
@@ -400,6 +417,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	endrule
 
 	rule procMapFlashWrite1post1 ( procQ.first.op == WRITE_PAGE && phaseWrite == 1 && blockScanReqCounter == max_block_scan_req && blockScanRespCounter == max_block_scan_req && blockScanFinalCounter < fromInteger(valueOf(BlkInfoEntriesPerWord)) );
+		if(verbose) $display("write1post1, %d", cnt);
 
 		blockScanFinalCounter <= blockScanFinalCounter + 1 ;
 
@@ -409,6 +427,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 
 
 	rule procMapFlashWrite1post2 ( procQ.first.op == WRITE_PAGE && phaseWrite == 1 && blockScanReqCounter == max_block_scan_req && blockScanRespCounter == max_block_scan_req && blockScanFinalCounter == fromInteger(valueOf(BlkInfoEntriesPerWord)) );
+		if(verbose) $display("write1post2, %d", cnt);
 		if (isValid(theMinEntry)) begin
 			phaseWrite <= 2;
 
@@ -450,6 +469,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	endrule
 
 	rule procMapFlashWrite2 ( procQ.first.op == WRITE_PAGE && phaseWrite == 2 );
+		if(verbose) $display("write2, %d", cnt);
 		procQ.deq;
 		phaseWrite <= 0;
 
@@ -472,6 +492,10 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		blkinfo.portA.request.put (
 			BRAMRequest{ write: True, responseOnWrite: False, address: truncate(addr_blkinfo), datain: blkinfo_vec}
 		);
+
+		let response = curWriteCmd;
+		response.fcmd.block = extend(block);
+		respQ.enq(response);
 	endrule
 
 	interface translateReq = toPut(reqQ);
@@ -479,9 +503,4 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	interface respError = toGet(resp_errorQ);
 	interface map_portB = map.portB;
 	interface blkinfo_portB = blkinfo.portB;
-endmodule
-
-module mkAFTL2(AFTLIfc);
-	let _m <- mkAFTL(128);
-	return _m;
 endmodule
