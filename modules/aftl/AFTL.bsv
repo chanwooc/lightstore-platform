@@ -77,11 +77,10 @@ endfunction
 //   input: {Segment #, Virt Blk #}
 //   output: MapEntry{ 2-bit MapStatus, 14-bit Mapped Physical Block # }
 
-`ifndef BSIM
+`ifndef SIM_BRAM
 // DRAM FFFF
 // BRAM 0000
-// typedef enum { NOT_ALLOCATED, ALLOCATED, DEAD } MapStatus deriving (Bits, Eq);
-typedef enum { DEAD, ALLOCATED, NOT_ALLOCATED } MapStatus deriving (Bits, Eq);
+typedef enum { NOT_ALLOCATED, ALLOCATED, DEAD } MapStatus deriving (Bits, Eq);
 `else
 // For testing. At BSIM, RAM is initialized to AAAAAAA
 typedef enum { DEAD, ALLOCATED, NOT_ALLOCATED } MapStatus deriving (Bits, Eq);
@@ -97,11 +96,10 @@ typedef struct {
 //   input: Physical {Card, Bus, Chip, Block}
 //   output: BlkInfoEntry{ 2-bit BlkStatus, 14-bit P/E count }
 
-`ifndef BSIM
+`ifndef SIM_BRAM
 // DRAM FFFF
 // BRAM 0000
-// typedef enum { FREE_BLK, DIRTY_BLK, CLEAN_BLK, BAD_BLK } BlkStatus deriving (Bits, Eq);
-typedef enum { BAD_BLK, DIRTY_BLK, FREE_BLK, CLEAN_BLK } BlkStatus deriving (Bits, Eq);
+typedef enum { FREE_BLK, DIRTY_BLK, CLEAN_BLK, BAD_BLK } BlkStatus deriving (Bits, Eq);
 `else
 // For testing. At BSIM, RAM is initialized to AAAAAAA
 typedef enum { BAD_BLK, DIRTY_BLK, FREE_BLK, CLEAN_BLK } BlkStatus deriving (Bits, Eq);
