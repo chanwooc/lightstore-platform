@@ -22,7 +22,9 @@ import AFTL::*;
 Integer testMax = 1024;
 Integer testMax2 = 1024+64;
 Integer testMax3 = 129;
-Integer testMax4 = 512+64;
+Integer testMax4 = 1024+64;
+
+Bool verbose = True;
 
 module mkTestAFTL(Empty);
 	let aftl <- mkAFTL128;
@@ -60,7 +62,7 @@ module mkTestAFTL(Empty);
 		end
 		req_cnt <= req_cnt+1;
 
-		$display("req1 sent lpa: %x", lpa);
+		if(verbose) $display("req1 sent lpa: %x", lpa);
 		aftl.translateReq.put(FTLCmd{tag: 0, op: WRITE_PAGE, lpa: truncate(lpa)});
 
 	endrule
@@ -77,7 +79,7 @@ module mkTestAFTL(Empty);
 		end
 		req_cnt2 <= req_cnt2+1;
 
-		$display("req2 sent lpa: %x", lpa);
+		if(verbose) $display("req2 sent lpa: %x", lpa);
 		aftl.translateReq.put(FTLCmd{tag: 0, op: READ_PAGE, lpa: truncate(lpa)});
 	endrule
 
@@ -93,7 +95,7 @@ module mkTestAFTL(Empty);
 		end
 		req_cnt3 <= req_cnt3+1;
 
-		$display("req3 sent lpa: %x", lpa);
+		if(verbose) $display("req3 sent lpa: %x", lpa);
 		aftl.translateReq.put(FTLCmd{tag: 0, op: ERASE_BLOCK, lpa: truncate(lpa)});
 	endrule
 
@@ -109,7 +111,7 @@ module mkTestAFTL(Empty);
 		end
 		req_cnt4 <= req_cnt4+1;
 
-		$display("req4 sent lpa: %x", lpa);
+		if(verbose) $display("req4 sent lpa: %x", lpa);
 		aftl.translateReq.put(FTLCmd{tag: 0, op: READ_PAGE, lpa: truncate(lpa)});
 	endrule
 
@@ -117,16 +119,20 @@ module mkTestAFTL(Empty);
 	rule proc_resp ;
 		let ans <- aftl.resp.get;
 		resp_cnt <= resp_cnt + 1;
-		$display("OK - Card Bus Chip Block Page:  %d, %d, %d, %d, %d", ans.card, ans.fcmd.bus, ans.fcmd.chip, ans.fcmd.block, ans.fcmd.page);
-		$display(fshow(ans.fcmd.op));
+		if(verbose) begin
+			$display("OK - Card Bus Chip Block Page:  %d, %d, %d, %d, %d", ans.card, ans.fcmd.bus, ans.fcmd.chip, ans.fcmd.block, ans.fcmd.page);
+			$display(fshow(ans.fcmd.op));
+		end
 	endrule
 
 	Reg#(Bit#(16)) resp_cnt_err <- mkReg(0);
 	rule proc_resp_err ;
 		let ans <- aftl.respError.get;
 		resp_cnt_err <= resp_cnt_err + 1;
-		$display("Error - lpa: %d", ans.lpa);
-		$display(fshow(ans.op));
+		if(verbose) begin
+			$display("Error - lpa: %d", ans.lpa);
+			$display(fshow(ans.op));
+		end
 	endrule
 
 endmodule
