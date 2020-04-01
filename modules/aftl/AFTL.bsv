@@ -99,10 +99,10 @@ typedef struct {
 `ifndef SIM_BRAM
 // DRAM FFFF
 // BRAM 0000
-typedef enum { FREE_BLK, DIRTY_BLK, CLEAN_BLK, BAD_BLK } BlkStatus deriving (Bits, Eq);
+typedef enum { FREE_BLK, DIRTY_BLK, USED_BLK, BAD_BLK } BlkStatus deriving (Bits, Eq);
 `else
 // For testing. At BSIM, RAM is initialized to AAAAAAA
-typedef enum { BAD_BLK, DIRTY_BLK, FREE_BLK, CLEAN_BLK } BlkStatus deriving (Bits, Eq);
+typedef enum { BAD_BLK, DIRTY_BLK, FREE_BLK, USED_BLK } BlkStatus deriving (Bits, Eq);
 `endif
 
 typedef struct {
@@ -151,16 +151,16 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	//   addr: {Segment #, Virt Blk #}
 	//   data: MapEntry{ 2-bit MapStatus, 14-bit Mapped Physical Block # }
 	BRAM_Configure map_conf = defaultValue;
-	// map_conf.latency = 2; // output register; TODO: 2-cycle latency for reads; better timing?
-	// map_conf.outFIFODepth = 4;
+	map_conf.latency = 2; // output register; TODO: 2-cycle latency for reads; better timing?
+	map_conf.outFIFODepth = 4;
 	BRAM2Port#(Bit#(TAdd#(SegmentTSz, VirtBlkTSz)), MapEntry) map <- mkBRAM2Server(map_conf);
 
 	// ** Block Info Table **
 	//   addr: {Card, Bus, Chip, Block} >> BlkInfoSelSz;
 	//   data: BlkInfoEntriesPerWord * BlkInfoEntry{ 2-bit BlkStatus, 14-bit PE }
 	BRAM_Configure blk_conf = defaultValue;
-	// blk_conf.latency = 2; // output register; TODO: 2-cycle latency for reads; better timing?
-	// blk_conf.outFIFODepth = 4;
+	blk_conf.latency = 2; // output register; TODO: 2-cycle latency for reads; better timing?
+	blk_conf.outFIFODepth = 4;
 	BRAM2Port#(Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)), Vector#(BlkInfoEntriesPerWord, BlkInfoEntry)) blkinfo <- mkBRAM2Server(blk_conf);
 	// BRAM2PortBE#(Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)), Vector#(BlkInfoEntriesPerWord, BlkInfoEntry), TDiv#(TMul#(SizeOf#(BlkInfoEntry), BlkInfoEntriesPerWord), 8)) blkinfo <- mkBRAM2ServerBE(blk_conf);
 
@@ -446,7 +446,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 
 			//Bit#(TDiv#(TMul#(SizeOf#(BlkInfoEntry), BlkInfoEntriesPerWord), 8)) mask = 'b11;
 			//mask = mask << {block_lower, 1'b0};
-			//let blkEntry = BlkInfoEntry{status: CLEAN_BLK, erase: erase};
+			//let blkEntry = BlkInfoEntry{status: USED_BLK, erase: erase};
 			//blkinfo.portA.request.put (
 			//	BRAMRequestBE{ writeen: mask, responseOnWrite: False, address: truncate(addr_blkinfo), datain: replicate(blkEntry) }
 			//);
@@ -484,7 +484,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		// card (optional, will be truncated), bus, chip, block_upper bits
 		let addr_blkinfo = {curWriteCmd.card, bus, chip, block_upper};
 
-		let updatedEntry = BlkInfoEntry{status: CLEAN_BLK, erase: erase};
+		let updatedEntry = BlkInfoEntry{status: USED_BLK, erase: erase};
 		blkinfo_vec[block_lower] = updatedEntry;
 
 		blkinfo.portA.request.put (
