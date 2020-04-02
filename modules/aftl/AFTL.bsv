@@ -110,7 +110,7 @@ typedef struct {
 	Bit#(TSub#(16, SizeOf#(BlkStatus))) erase; //14
 } BlkInfoEntry deriving (Bits, Eq); // 16-bit (2-bytes) block info entry
 
-typedef 16 BlkInfoEntriesPerWord;
+typedef 8 BlkInfoEntriesPerWord;
 typedef TLog#(BlkInfoEntriesPerWord) BlkInfoSelSz;
 typedef Bit#(BlkInfoSelSz) BlkInfoSelT;
 
@@ -304,7 +304,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 
 		BlkInfoSelT sel = truncate(block);
 		//blkinfo_vec[sel] = BlkInfoEntry{status: FREE_BLK, erase: blkinfo_vec[sel].erase+1};
-		Bit#(16) sel_vec = 1 << sel;
+		Bit#(8) sel_vec = 1 << sel;
 
 		let new_blkinfo_vec = zipWith3(muxBlkInfoEntry, unpack(sel_vec), blkinfo_vec, blkinfo_vec_erased);
 
@@ -455,19 +455,13 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 				BRAMRequest{ write: False, responseOnWrite: False, address: truncate(addr_blkinfo), datain: ?}
 			);
 
-			//Bit#(TDiv#(TMul#(SizeOf#(BlkInfoEntry), BlkInfoEntriesPerWord), 8)) mask = 'b11;
-			//mask = mask << {block_lower, 1'b0};
-			//let blkEntry = BlkInfoEntry{status: USED_BLK, erase: erase};
-			//blkinfo.portA.request.put (
-			//	BRAMRequestBE{ writeen: mask, responseOnWrite: False, address: truncate(addr_blkinfo), datain: replicate(blkEntry) }
-			//);
+			// Do below in Write2
+			// let mapEntry = MapEntry{status: ALLOCATED, block: zeroExtend(block)};
+			// let addr_map = { getSegmentT(procQ.first.lpa), getVirtBlkT(procQ.first.lpa) };
 
-			let mapEntry = MapEntry{status: ALLOCATED, block: zeroExtend(block)};
-			let addr_map = { getSegmentT(procQ.first.lpa), getVirtBlkT(procQ.first.lpa) };
-
-			blockmap.portA.request.put ( 
-				BRAMRequest{ write: True, responseOnWrite: False, address: addr_map, datain: mapEntry }
-			);
+			// blockmap.portA.request.put ( 
+			// 	BRAMRequest{ write: True, responseOnWrite: False, address: addr_map, datain: mapEntry }
+			// );
 
 		end
 		else begin
@@ -479,6 +473,20 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 
 	rule procMapFlashWrite2 ( procQ.first.op == WRITE_PAGE && phaseWrite == 2 );
 		if(verbose) $display("write2, %d", cnt);
+
+		phaseWrite <= 3;
+
+		BlockT block = truncate(tpl_1(fromMaybe2(theMinEntry)));
+		let mapEntry = MapEntry{status: ALLOCATED, block: zeroExtend(block)};
+		let addr_map = { getSegmentT(procQ.first.lpa), getVirtBlkT(procQ.first.lpa) };
+
+		blockmap.portA.request.put ( 
+			BRAMRequest{ write: True, responseOnWrite: False, address: addr_map, datain: mapEntry }
+		);
+	endrule
+
+	rule procMapFlashWrite3 ( procQ.first.op == WRITE_PAGE && phaseWrite == 3 );
+		if(verbose) $display("write3, %d", cnt);
 		procQ.deq;
 		phaseWrite <= 0;
 
