@@ -3,7 +3,7 @@ BUILD_DIR=build_dir
 
 all:
 	@mkdir -p build_dir
-	bsc -bdir build_dir -vdir . -u -p +:../../lib:../../platform/flash_ctrl/common -verilog -show-schedule -aggressive-conditions -g mkAFTL2 AFTL.bsv
+	bsc -bdir build_dir -vdir . -u -p +:../../lib:../../platform/flash_ctrl/common -verilog -show-schedule -aggressive-conditions -g mkAFTL128 AFTL.bsv
 
 test:
 	@mkdir -p build_dir sim_dir

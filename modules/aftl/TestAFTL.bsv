@@ -41,7 +41,6 @@ module mkTestAFTL(Empty);
 		data[2].erase = 5;
 		data[3].erase = 7;
 		data[7].erase = 2;
-		data[9].erase = 9;
 
 		aftl.blkinfo_portB.request.put( 
 			BRAMRequest{ write: True, responseOnWrite: False, address: 2, datain: data}

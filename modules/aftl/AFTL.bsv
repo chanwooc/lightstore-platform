@@ -142,6 +142,11 @@ module mkAFTL128 (AFTLIfc);
 	return _m;
 endmodule
 
+typedef struct {
+	LPA lpa;
+	MultiFlashCmd cmd;
+} LPA_MultiFlashCmd deriving (Bits, Eq);
+
 module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	FIFO#(FTLCmd) reqQ <- mkSizedFIFO(cmdQDepth);
 	FIFO#(MultiFlashCmd) respQ <- mkFIFO;
@@ -165,21 +170,33 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	// BRAM2PortBE#(Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)), Vector#(BlkInfoEntriesPerWord, BlkInfoEntry), TDiv#(TMul#(SizeOf#(BlkInfoEntry), BlkInfoEntriesPerWord), 8)) blkinfo <- mkBRAM2ServerBE(blk_conf);
 
 	//FIFO#(FTLCmd) procQ <- mkPipelinedFIFO; // Size == 1, Only 1 req in-flight
-	FIFOF#(FTLCmd) procQ <- mkFIFOF1; // Size == 1, Only 1 req in-flight
+	// FIFOF#(FTLCmd) procQ <- mkFIFOF1; // Size == 1, Only 1 req in-flight
+
+	FIFOF#(FTLCmd) procQ <- mkFIFOF; 
+	FIFOF#(LPA_MultiFlashCmd) procQ_R <- mkFIFOF;
+	FIFOF#(LPA_MultiFlashCmd) procQ_W <- mkFIFOF;
+	FIFOF#(LPA_MultiFlashCmd) procQ_W_trig <- mkFIFOF;
+	FIFOF#(LPA_MultiFlashCmd) procQ_E <- mkFIFOF;
+	Vector#(6,FIFOF#(Tuple2#(Bit#(1), LPA_MultiFlashCmd))) procUpdateQs <- replicateM(mkFIFOF);
+
+
+	Reg#(Bool) inProgress <- mkReg(False);
 
 	Reg#(Bit#(32)) cnt <- mkReg(0);
 	rule cntup;
 		cnt <= cnt+1;
 	endrule
 
-	rule requestReadMap (!procQ.notEmpty); // do only if the procQ is empty (strict guard for conflicts)
-		if(verbose) $display("reqReadMap, %d", cnt);
+	rule requestMapping ( inProgress == False );
+		if(verbose) $display("[%d] requestMapping", cnt);
+
 		let ftlCmd <- toGet(reqQ).get;
 
 		case(ftlCmd.op)
 			WRITE_PAGE, READ_PAGE, ERASE_BLOCK: begin
 				procQ.enq( ftlCmd );
 				let addr = { getSegmentT(ftlCmd.lpa), getVirtBlkT(ftlCmd.lpa) };
+				inProgress <= True;
 
 				blockmap.portA.request.put (
 					BRAMRequest{write: False, responseOnWrite: False, address: addr, datain: ?}
@@ -192,181 +209,15 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		endcase
 	endrule
 
-	rule procMapFlashRead ( procQ.first.op == READ_PAGE );
-		if(verbose) $display("procMapRead, %d", cnt);
-		let mapEntry <- blockmap.portA.response.get;
-		let lpa = procQ.first.lpa;
+	rule checkMapping0 (inProgress);
+		if(verbose) $display("[%d] checkMapping0", cnt);
 
-		case (mapEntry.status)
-			ALLOCATED: begin
-				let oneFlashCmd = FlashCmd {
-					tag: procQ.first.tag,
-					op: READ_PAGE,
-					bus: truncate( lpa >> valueOf(TLog#(NUM_CARDS)) ),
-					chip: truncate( {getSegmentT(lpa), getVirtBlkT(lpa)} >> valueOf(TLog#(TMul#(NUM_BUSES, NUM_CARDS))) ),
-					block: zeroExtend( mapEntry.block ),
-					page: zeroExtend( getPageT(lpa) )
-				};
-
-				let multiFlashCmd = MultiFlashCmd{
-					card: lpa[0], // IF one card, could be wrong value but ignored
-					fcmd: oneFlashCmd
-				};
-
-				procQ.deq;
-				respQ.enq(multiFlashCmd);
-			end
-			default: begin
-				procQ.deq;
-				resp_errorQ.enq(procQ.first);
-			end
-		endcase
-	endrule
-
-	Reg#(Bit#(2)) phaseErase <- mkReg(0);
-	Reg#(MultiFlashCmd) curEraseCmd <- mkRegU;
-
-	rule procMapFlashErase0 ( procQ.first.op == ERASE_BLOCK && phaseErase == 0 );
-		if(verbose) $display("erase0, %d", cnt);
 		let mapEntry <- blockmap.portA.response.get;
 		let lpa = procQ.first.lpa;
 
 		let oneFlashCmd = FlashCmd {
 			tag: procQ.first.tag,
-			op: ERASE_BLOCK,
-			bus: truncate( lpa >> valueOf(TLog#(NUM_CARDS)) ),
-			chip: truncate( {getSegmentT(lpa), getVirtBlkT(lpa)} >> valueOf(TLog#(TMul#(NUM_BUSES, NUM_CARDS))) ),
-			block: zeroExtend( mapEntry.block ),
-			page: 0
-		};
-
-		let multiFlashCmd = MultiFlashCmd{
-			card: lpa[0], // IF one card, could be wrong value but ignored
-			fcmd: oneFlashCmd
-		};
-
-		case (mapEntry.status)
-			ALLOCATED: begin
-				respQ.enq(multiFlashCmd);
-
-				// Update block map -> NOT_ALLOCATED
-				//  This should be visible to the very next cmd in req -> procQ should be mkFIFO1
-				let addr = { getSegmentT(procQ.first.lpa), getVirtBlkT(procQ.first.lpa) };
-				blockmap.portA.request.put ( 
-					BRAMRequest{write: True, responseOnWrite: False, address: addr, datain: MapEntry{status: NOT_ALLOCATED, block: 0}}
-				);
-
-				// Move to update PE count..
-				phaseErase <= 1;
-				curEraseCmd <= multiFlashCmd;
-			end
-			default: begin
-				procQ.deq;
-				resp_errorQ.enq(procQ.first);
-			end
-		endcase
-	endrule
-
-	rule procMapFlashErase1 ( procQ.first.op == ERASE_BLOCK && phaseErase == 1 );
-		if(verbose) $display("erase1, %d", cnt);
-		// card (optional, will be truncated if one card), bus, chip, block_upper bits
-		BusT bus = curEraseCmd.fcmd.bus;
-		ChipT chip = curEraseCmd.fcmd.chip;
-		BlockT block = truncate(curEraseCmd.fcmd.block);
-
-		let addr = {curEraseCmd.card, bus, chip, block} >> valueOf(BlkInfoSelSz);
-		blkinfo.portA.request.put (
-			// BRAMRequestBE{writeen: 0, responseOnWrite: False, address: truncate(addr), datain: ?}
-			BRAMRequest{write: False, responseOnWrite: False, address: truncate(addr), datain: ?}
-		);
-
-		phaseErase <= 2;
-	endrule
-
-	function BlkInfoEntry muxBlkInfoEntry( Bit#(1) sel, BlkInfoEntry a0, BlkInfoEntry a1 );
-		return sel==0?a0:a1;
-	endfunction
-
-	function BlkInfoEntry eraseBlkInfoEntry( BlkInfoEntry entry );
-		return BlkInfoEntry{status: FREE_BLK, erase: entry.erase+1};
-	endfunction
-
-	rule procMapFlashErase2 ( procQ.first.op == ERASE_BLOCK && phaseErase == 2 );
-		if(verbose) $display("erase2, %d", cnt);
-		let blkinfo_vec <- blkinfo.portA.response.get;
-		let blkinfo_vec_erased = map(eraseBlkInfoEntry, blkinfo_vec);
-
-		BusT bus = curEraseCmd.fcmd.bus;
-		ChipT chip = curEraseCmd.fcmd.chip;
-		BlockT block = truncate(curEraseCmd.fcmd.block);
-
-		let addr = {curEraseCmd.card, bus, chip, block} >> valueOf(BlkInfoSelSz);
-
-		BlkInfoSelT sel = truncate(block);
-		//blkinfo_vec[sel] = BlkInfoEntry{status: FREE_BLK, erase: blkinfo_vec[sel].erase+1};
-		Bit#(8) sel_vec = 1 << sel;
-
-		let new_blkinfo_vec = zipWith3(muxBlkInfoEntry, unpack(sel_vec), blkinfo_vec, blkinfo_vec_erased);
-
-		blkinfo.portA.request.put (
-			BRAMRequest{write: True, responseOnWrite: False, address: truncate(addr), datain: new_blkinfo_vec}
-		);
-
-		procQ.deq;
-		phaseErase <= 0;
-	endrule
-
-	Reg#(Bit#(2)) phaseWrite <- mkReg(0);
-	Reg#(MultiFlashCmd) curWriteCmd <- mkRegU;
-	Reg#(Bit#(TAdd#(1, TSub#(BlockTSz, BlkInfoSelSz)))) blockScanReqCounter <- mkReg(0);
-	Reg#(Bit#(TAdd#(1, TSub#(BlockTSz, BlkInfoSelSz)))) blockScanRespCounter <- mkReg(0);
-	Reg#(Bit#(TAdd#(1, BlkInfoSelSz))) blockScanFinalCounter <- mkReg(0);
-	Bit#(TAdd#(1, TSub#(BlockTSz, BlkInfoSelSz))) max_block_scan_req = fromInteger(valueOf(TExp#(TSub#(BlockTSz, BlkInfoSelSz))));
-
-	// <blk_num, pe cnt> pair
-	Reg#(Vector#(BlkInfoEntriesPerWord, Maybe#(Tuple2#(Bit#(14), Bit#(14))))) minEntries <- mkRegU;
-	Reg#(Maybe#(Tuple2#(Bit#(14), Bit#(14)))) theMinEntry <- mkRegU;
-
-	function a fromMaybe2(Maybe#(a) b);
-		return fromMaybe(?, b);
-	endfunction
-
-	function Maybe#(Tuple2#(Bit#(14), Bit#(14))) updateMinEntries (Maybe#(Tuple2#(Bit#(14), Bit#(14))) prevMin, BlkInfoEntry blkEntry, Integer idx);
-		if (blkEntry.status != FREE_BLK)
-			return prevMin;
-		else begin
-			//compare only if FREE_BLK
-			Bit#(14) minBlk = (zeroExtend( blockScanRespCounter ) << valueOf(BlkInfoSelSz)) + fromInteger(idx);
-			//if(verbose) $display("[func] ");
-			case ( isValid(prevMin) && tpl_2(fromMaybe2(prevMin)) <= blkEntry.erase )
-				True:  return prevMin;
-				False: return tagged Valid tuple2( minBlk , blkEntry.erase);
-			endcase
-		end
-	endfunction
-
-	function Maybe#(Tuple2#(Bit#(14), Bit#(14))) getMinEntries (Maybe#(Tuple2#(Bit#(14), Bit#(14))) prevMin, Maybe#(Tuple2#(Bit#(14), Bit#(14))) nextMin);
-		if (isValid (nextMin)) begin
-			if (isValid(prevMin)) begin
-				return (tpl_2(fromMaybe2(prevMin))<=tpl_2(fromMaybe2(nextMin)))?prevMin:nextMin;
-			end
-			else begin
-				return nextMin;
-			end
-		end
-		else begin
-			return prevMin;
-		end
-	endfunction
-
-	rule procMapFlashWrite0 ( procQ.first.op == WRITE_PAGE && phaseWrite == 0 );
-		if(verbose) $display("write0, %d", cnt);
-		let mapEntry <- blockmap.portA.response.get;
-		let lpa = procQ.first.lpa;
-
-		let oneFlashCmd = FlashCmd {
-			tag: procQ.first.tag,
-			op: WRITE_PAGE,
+			op: procQ.first.op,
 			bus: truncate( lpa >> valueOf(TLog#(NUM_CARDS)) ),
 			chip: truncate( {getSegmentT(lpa), getVirtBlkT(lpa)} >> valueOf(TLog#(TMul#(NUM_BUSES, NUM_CARDS))) ),
 			block: zeroExtend( mapEntry.block ),
@@ -378,141 +229,333 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 			fcmd: oneFlashCmd
 		};
 
+		procQ.deq;
 		case (mapEntry.status)
-			NOT_ALLOCATED: begin // TODO: allocation
-				curWriteCmd <= multiFlashCmd;
-				phaseWrite <= 1;
-				blockScanReqCounter <= 0;
-				blockScanRespCounter <= 0;
-				blockScanFinalCounter <= 0;
-				theMinEntry <= tagged Invalid;
-				minEntries <= replicate ( tagged Invalid );
+			ALLOCATED: begin
+				case (procQ.first.op)
+					READ_PAGE:   procQ_R.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					WRITE_PAGE:  procQ_W.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					ERASE_BLOCK: procQ_E.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+				endcase
 			end
-			ALLOCATED: begin // We assume SW issues write in append-only manner - we don't check
-				procQ.deq;
-				respQ.enq(multiFlashCmd);
+
+			NOT_ALLOCATED: begin
+				case (procQ.first.op)
+					READ_PAGE, ERASE_BLOCK: begin
+						inProgress <= False;
+						resp_errorQ.enq(procQ.first);
+					end
+					WRITE_PAGE: procQ_W_trig.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+				endcase
 			end
+
 			default: begin
-				procQ.deq;
+				inProgress <= False;
 				resp_errorQ.enq(procQ.first);
 			end
 		endcase
 	endrule
 
-	rule procMapFlashWrite1req ( procQ.first.op == WRITE_PAGE && phaseWrite == 1 && blockScanReqCounter < max_block_scan_req );
-		if(verbose) $display("write1req, %d", cnt);
-		blockScanReqCounter <= blockScanReqCounter + 1;
+	rule procAftlRead (inProgress);
+		inProgress <= False;
 
-		BusT bus = curWriteCmd.fcmd.bus;
-		ChipT chip = curWriteCmd.fcmd.chip;
-		Bit#(TSub#(BlockTSz, BlkInfoSelSz)) block_upper = truncate(blockScanReqCounter);
-
-		// card (optional, will be truncated), bus, chip, block_upper bits
-		let addr = {curWriteCmd.card, bus, chip, block_upper};
-
-		blkinfo.portA.request.put (
-			//BRAMRequestBE{writeen: 0, responseOnWrite: False, address: truncate(addr), datain: ?}
-			BRAMRequest{write: False, responseOnWrite: False, address: truncate(addr), datain: ?}
-		);
+		procQ_R.deq;
+		respQ.enq(procQ_R.first.cmd);
 	endrule
 
-	rule procMapFlashWrite1resp ( procQ.first.op == WRITE_PAGE && phaseWrite == 1 && blockScanRespCounter < max_block_scan_req );
-		if(verbose) $display("write1resp, %d", cnt);
-		blockScanRespCounter <= blockScanRespCounter + 1;
-		let blkinfo_vec <- blkinfo.portA.response.get;
+	rule procAftlWriteAllocated (inProgress);
+		inProgress <= False;
 
-		let newMinEntries = zipWith3( updateMinEntries, minEntries, blkinfo_vec, genVector() );
-		minEntries <= newMinEntries;
+		procQ_W.deq;
+		respQ.enq(procQ_W.first.cmd);
 	endrule
 
-	rule procMapFlashWrite1post1 ( procQ.first.op == WRITE_PAGE && phaseWrite == 1 && blockScanReqCounter == max_block_scan_req && blockScanRespCounter == max_block_scan_req && blockScanFinalCounter < fromInteger(valueOf(BlkInfoEntriesPerWord)) );
-		if(verbose) $display("write1post1, %d", cnt);
+	rule procAftlErase (inProgress);
+		procQ_E.deq;
 
-		blockScanFinalCounter <= blockScanFinalCounter + 1 ;
+		let cmd = procQ_E.first.cmd;
+		cmd.fcmd.page = 0;
 
-		minEntries <= rotate(minEntries); // shift
-		theMinEntry <= getMinEntries(theMinEntry, minEntries[0]);
+		procUpdateQs[0].enq(tuple2(0, LPA_MultiFlashCmd{lpa: procQ_E.first.lpa, cmd: cmd}));
 	endrule
 
+	rule procAftlWriteNotAllocated (inProgress);
+		procQ_W_trig.deq;
 
-	rule procMapFlashWrite1post2 ( procQ.first.op == WRITE_PAGE && phaseWrite == 1 && blockScanReqCounter == max_block_scan_req && blockScanRespCounter == max_block_scan_req && blockScanFinalCounter == fromInteger(valueOf(BlkInfoEntriesPerWord)) );
-		if(verbose) $display("write1post2, %d", cnt);
-		if (isValid(theMinEntry)) begin
-			phaseWrite <= 2;
+		procUpdateQs[0].enq(tuple2(1, procQ_W_trig.first));
+	endrule
 
-			BusT bus = curWriteCmd.fcmd.bus;
-			ChipT chip = curWriteCmd.fcmd.chip;
-			BlockT block = truncate(tpl_1(fromMaybe2(theMinEntry)));
-			let erase = tpl_2(fromMaybe2(theMinEntry));
+	let isQ0Erase = (tpl_1(procUpdateQs[0].first) == 0);
 
-			Bit#(TSub#(BlockTSz, BlkInfoSelSz)) block_upper = truncateLSB( block );
-			Bit#(BlkInfoSelSz) block_lower = truncate( block );
+	Reg#(Bit#(TAdd#(1, TSub#(BlockTSz, BlkInfoSelSz)))) blkScanReqCnt <- mkReg(0);
+	Reg#(Bit#(TAdd#(1, TSub#(BlockTSz, BlkInfoSelSz)))) blkScanRespCnt <- mkReg(0);
+	Reg#(Bit#(TAdd#(1, BlkInfoSelSz))) blkScanFinalCnt <- mkReg(0);
+	Bit#(TAdd#(1, TSub#(BlockTSz, BlkInfoSelSz))) max_block_scan_req = fromInteger(valueOf(TExp#(TSub#(BlockTSz, BlkInfoSelSz))));
 
-			// card (optional, will be truncated), bus, chip, block_upper bits
-			let addr_blkinfo = {curWriteCmd.card, bus, chip, block_upper};
+	Reg#(Bool) blkScanIssued <- mkReg(False);
 
-			blkinfo.portA.request.put (
-				BRAMRequest{ write: False, responseOnWrite: False, address: truncate(addr_blkinfo), datain: ?}
-			);
+	rule updateBlkInfo0 (inProgress && blkScanIssued == False);
+		if(verbose) $display("[%d] updateBlkInfo0", cnt);
 
-			// Do below in Write2
-			// let mapEntry = MapEntry{status: ALLOCATED, block: zeroExtend(block)};
-			// let addr_map = { getSegmentT(procQ.first.lpa), getVirtBlkT(procQ.first.lpa) };
-
-			// blockmap.portA.request.put ( 
-			// 	BRAMRequest{ write: True, responseOnWrite: False, address: addr_map, datain: mapEntry }
-			// );
-
+		if (isQ0Erase) begin
+			// Erase command
+			// Skip [0,1,2] and goto [3]
+			let procCmd <- toGet(procUpdateQs[0]).get;
+			procUpdateQs[3].enq(procCmd);
+			blkScanIssued <= True; // mark as if blk (skipping [0,1])
 		end
 		else begin
-			phaseWrite <= 0;
-			procQ.deq;
-			resp_errorQ.enq(procQ.first);
+			// Write command (New allocation)
+			if( blkScanReqCnt == 0 ) begin
+				blkScanReqCnt <= blkScanReqCnt + 1;
+				procUpdateQs[1].enq(procUpdateQs[0].first);
+			end
+			else if( blkScanReqCnt == max_block_scan_req - 1 ) begin
+				blkScanReqCnt <= 0;
+				procUpdateQs[0].deq;
+				blkScanIssued <= True;
+			end
+			else begin
+				blkScanReqCnt <= blkScanReqCnt + 1;
+			end
+
+			let curCmd = tpl_2(procUpdateQs[0].first).cmd;
+
+			BusT bus = curCmd.fcmd.bus;
+			ChipT chip = curCmd.fcmd.chip;
+			Bit#(TSub#(BlockTSz, BlkInfoSelSz)) block_upper = truncate(blkScanReqCnt);
+
+			Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)) addr =
+					truncate({curCmd.card, bus, chip, block_upper});
+
+			blkinfo.portA.request.put (
+				BRAMRequest{write: False, responseOnWrite: False, address: addr, datain: ?}
+			);
 		end
 	endrule
 
-	rule procMapFlashWrite2 ( procQ.first.op == WRITE_PAGE && phaseWrite == 2 );
-		if(verbose) $display("write2, %d", cnt);
+	function Maybe#(Tuple2#(Bit#(14), Bit#(14))) updateMinEntries (Maybe#(Tuple2#(Bit#(14), Bit#(14))) prevMin, BlkInfoEntry blkEntry, Integer idx);
+		if (blkEntry.status != FREE_BLK)
+			return prevMin;
+		else begin
+			//compare only if FREE_BLK
+			Bit#(14) minBlk = (zeroExtend( blkScanRespCnt ) << valueOf(BlkInfoSelSz)) + fromInteger(idx);
+			//if(verbose) $display("[func] ");
+			case ( isValid(prevMin) && tpl_2(fromMaybe(?, prevMin)) <= blkEntry.erase )
+				True:  return prevMin;
+				False: return tagged Valid tuple2( minBlk , blkEntry.erase);
+			endcase
+		end
+	endfunction
 
-		phaseWrite <= 3;
+	function Maybe#(Tuple2#(Bit#(14), Bit#(14))) getMinEntries (Maybe#(Tuple2#(Bit#(14), Bit#(14))) prevMin, Maybe#(Tuple2#(Bit#(14), Bit#(14))) nextMin);
+		if (isValid (nextMin)) begin
+			if (isValid(prevMin)) begin
+				return (tpl_2(fromMaybe(?, prevMin))<=tpl_2(fromMaybe(?, nextMin)))?prevMin:nextMin;
+			end
+			else begin
+				return nextMin;
+			end
+		end
+		else begin
+			return prevMin;
+		end
+	endfunction
 
-		BlockT block = truncate(tpl_1(fromMaybe2(theMinEntry)));
-		let mapEntry = MapEntry{status: ALLOCATED, block: zeroExtend(block)};
-		let addr_map = { getSegmentT(procQ.first.lpa), getVirtBlkT(procQ.first.lpa) };
+	// <blk_num, pe cnt> pair
+	Reg#(Vector#(BlkInfoEntriesPerWord, Maybe#(Tuple2#(Bit#(14), Bit#(14))))) curMinEnt <- mkReg(replicate(tagged Invalid));
+	FIFO#(Vector#(BlkInfoEntriesPerWord, Maybe#(Tuple2#(Bit#(14), Bit#(14))))) minEntVecQ <- mkFIFO;
 
-		blockmap.portA.request.put ( 
-			BRAMRequest{ write: True, responseOnWrite: False, address: addr_map, datain: mapEntry }
+	// WRITE command only: miss AFTL -> new allocation
+	// SCAN available block with minimum PE
+	rule updateBlkInfo1 (inProgress && procUpdateQs[1].notEmpty);
+		if(verbose) $display("[%d] updateBlkInfo1", cnt);
+		let d <- blkinfo.portA.response.get;
+
+		//$display("dd: %x %x %x %x", d[3], d[2], d[1], d[0]);
+		//$display("c1: %x %x %x %x", tpl_1(fromMaybe(?,curMinEnt[3])), tpl_1(fromMaybe(?,curMinEnt[2])), tpl_1(fromMaybe(?,curMinEnt[1])), tpl_1(fromMaybe(?,curMinEnt[0])));
+		//$display("c2: %x %x %x %x", tpl_2(fromMaybe(?,curMinEnt[3])), tpl_2(fromMaybe(?,curMinEnt[2])), tpl_2(fromMaybe(?,curMinEnt[1])), tpl_2(fromMaybe(?,curMinEnt[0])));
+		//$display("v: %x %x %x %x", isValid(curMinEnt[3]), isValid(curMinEnt[2]), isValid(curMinEnt[1]), isValid(curMinEnt[0]) );
+
+		let newMinEnt = zipWith3( updateMinEntries, curMinEnt, d, genVector() );
+
+		if( blkScanRespCnt == max_block_scan_req - 1 ) begin
+			blkScanRespCnt <= 0;
+
+			curMinEnt <= replicate(tagged Invalid);
+
+
+			minEntVecQ.enq(newMinEnt);
+			//$display("v: %x %x %x %x", isValid(curMinEnt[3]), isValid(curMinEnt[2]), isValid(curMinEnt[1]), isValid(curMinEnt[0]) );
+			//$display("c1: %x %x %x %x", tpl_1(fromMaybe(?,curMinEnt[3])), tpl_1(fromMaybe(?,curMinEnt[2])), tpl_1(fromMaybe(?,curMinEnt[1])), tpl_1(fromMaybe(?,curMinEnt[0])));
+			//$display("c2: %x %x %x %x", tpl_2(fromMaybe(?,curMinEnt[3])), tpl_2(fromMaybe(?,curMinEnt[2])), tpl_2(fromMaybe(?,curMinEnt[1])), tpl_2(fromMaybe(?,curMinEnt[0])));
+
+			let procCmd <- toGet(procUpdateQs[1]).get;
+			procUpdateQs[2].enq(procCmd);
+		end
+		else begin
+			blkScanRespCnt <= blkScanRespCnt + 1;
+			curMinEnt <= newMinEnt;
+		end
+	endrule
+
+	Reg#(Vector#(BlkInfoEntriesPerWord, Maybe#(Tuple2#(Bit#(14), Bit#(14))))) minEnt <- mkReg(replicate(tagged Invalid));
+	Reg#(Maybe#(Tuple2#(Bit#(14), Bit#(14)))) theMinEntry <- mkReg(tagged Invalid);
+	FIFO#(Tuple2#(Bit#(14), Bit#(14))) minPeEntryQ <- mkFIFO;
+
+	// WRITE command only: miss AFTL -> new allocation
+	// SCAN continued (final processing)
+	rule updateBlkInfo2 (inProgress && procUpdateQs[2].notEmpty);
+		if(verbose) $display("[%d] updateBlkInfo2", cnt);
+		if (blkScanFinalCnt == 0) begin
+			blkScanFinalCnt <= blkScanFinalCnt + 1 ;
+
+			let v = minEntVecQ.first[0];
+			minEntVecQ.deq;
+
+			minEnt <= rotate(minEntVecQ.first);
+			theMinEntry <= getMinEntries(theMinEntry, v);
+		end
+		else if (blkScanFinalCnt == fromInteger(valueOf(BlkInfoEntriesPerWord)-1)) begin
+			blkScanFinalCnt <= 0;
+
+			minEnt <= replicate(tagged Invalid);
+			theMinEntry <= tagged Invalid;
+
+
+			let finalEntry = getMinEntries(theMinEntry, minEnt[0]);
+			if (isValid(finalEntry)) begin
+				minPeEntryQ.enq(fromMaybe(?, finalEntry));
+
+				//$display("final entry: %d %d", tpl_1(fromMaybe(?, finalEntry)), tpl_2(fromMaybe(?, finalEntry)));
+
+				let procCmd <- toGet(procUpdateQs[2]).get;
+				procUpdateQs[3].enq(procCmd);
+			end
+			else begin
+				inProgress <= False;
+				let procCmd <- toGet(procUpdateQs[2]).get;
+
+				let fcmd = tpl_2(procUpdateQs[2].first).cmd.fcmd;
+
+				FTLCmd resp_err
+				= FTLCmd{ tag: fcmd.tag, op: WRITE_PAGE, lpa: tpl_2(procUpdateQs[2].first).lpa };
+
+				resp_errorQ.enq(resp_err);
+			end
+		end
+		else begin
+			blkScanFinalCnt <= blkScanFinalCnt + 1 ;
+
+			minEnt <= rotate(minEnt);
+			theMinEntry <= getMinEntries(theMinEntry, minEnt[0]);
+		end
+	endrule
+
+	let isQ3Erase = (tpl_1(procUpdateQs[3].first) == 0);
+	// WRITE & ERASE
+	// Update BlkInfo - first read the line
+	rule updateBlkInfo3 (inProgress && procUpdateQs[3].notEmpty && blkScanIssued == True);
+		if(verbose) $display("[%d] updateBlkInfo3", cnt);
+		let curCmd = tpl_2(procUpdateQs[3].first).cmd;
+		let curLPA = tpl_2(procUpdateQs[3].first).lpa;
+
+		if(!isQ3Erase) curCmd.fcmd.block = zeroExtend(tpl_1(minPeEntryQ.first));
+
+		procUpdateQs[3].deq;
+		procUpdateQs[4].enq(tuple2( isQ3Erase?0:1, LPA_MultiFlashCmd{lpa: curLPA, cmd: curCmd} ));
+
+		BusT bus = curCmd.fcmd.bus;
+		ChipT chip = curCmd.fcmd.chip;
+		BlockT block = truncate(curCmd.fcmd.block);
+
+		Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)) addr =
+			truncate({curCmd.card, bus, chip, block} >> valueOf(BlkInfoSelSz));
+
+		//$display("updateBlkinfo3 addr %d", addr);
+
+		blkinfo.portA.request.put (
+			BRAMRequest{write: False, responseOnWrite: False, address: addr, datain: ?}
 		);
 	endrule
 
-	rule procMapFlashWrite3 ( procQ.first.op == WRITE_PAGE && phaseWrite == 3 );
-		if(verbose) $display("write3, %d", cnt);
-		procQ.deq;
-		phaseWrite <= 0;
+	function BlkInfoEntry eraseBlkInfoEntry( BlkInfoEntry entry );
+		return BlkInfoEntry{status: FREE_BLK, erase: entry.erase+1};
+	endfunction
+
+	function BlkInfoEntry muxBlkInfoEntry( Bit#(1) sel, BlkInfoEntry a0, BlkInfoEntry a1 );
+		return sel==0?a0:a1;
+	endfunction
+
+	let isQ4Erase = (tpl_1(procUpdateQs[4].first) == 0);
+
+	rule updateBlkInfo4 (inProgress && procUpdateQs[4].notEmpty && blkScanIssued == True);
+		if(verbose) $display("[%d] updateBlkInfo4", cnt);
+		let procCmd <- toGet(procUpdateQs[4]).get;
+		procUpdateQs[5].enq(procCmd);
 
 		let blkinfo_vec <- blkinfo.portA.response.get;
 
-		BusT bus = curWriteCmd.fcmd.bus;
-		ChipT chip = curWriteCmd.fcmd.chip;
-		BlockT block = truncate(tpl_1(fromMaybe2(theMinEntry)));
-		let erase = tpl_2(fromMaybe2(theMinEntry));
+		let curCmd = tpl_2(procUpdateQs[4].first).cmd;
 
-		Bit#(TSub#(BlockTSz, BlkInfoSelSz)) block_upper = truncateLSB( block );
-		Bit#(BlkInfoSelSz) block_lower = truncate( block );
+		//Vector#(BlkInfoEntriesPerWord, BlkInfoEntry) new_line;
 
-		// card (optional, will be truncated), bus, chip, block_upper bits
-		let addr_blkinfo = {curWriteCmd.card, bus, chip, block_upper};
+		BusT bus = curCmd.fcmd.bus;
+		ChipT chip = curCmd.fcmd.chip;
+		BlockT block = truncate(curCmd.fcmd.block);
+		BlkInfoSelT block_lower = truncate(block);
 
-		let updatedEntry = BlkInfoEntry{status: USED_BLK, erase: erase};
-		blkinfo_vec[block_lower] = updatedEntry;
+		Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)) addr =
+			truncate({curCmd.card, bus, chip, block} >> valueOf(BlkInfoSelSz));
+
+		if (isQ4Erase) begin
+			let blkinfo_vec_erased = map(eraseBlkInfoEntry, blkinfo_vec);
+
+			Bit#(8) sel_vec = 1 << block_lower;
+
+			blkinfo_vec = zipWith3(muxBlkInfoEntry, unpack(sel_vec), blkinfo_vec, blkinfo_vec_erased);
+		end
+		else begin
+			let updatedEntry = BlkInfoEntry{status: USED_BLK, erase: tpl_2(minPeEntryQ.first)};
+			minPeEntryQ.deq;
+			blkinfo_vec[block_lower] = updatedEntry;
+			//$display("updateBlkinfo4 addr %d", addr);
+			//$display("updateBlkIfo4 %x %x %x %x %x", blkinfo_vec[7], blkinfo_vec[3], blkinfo_vec[2], blkinfo_vec[1], blkinfo_vec[0]);
+		end
 
 		blkinfo.portA.request.put (
-			BRAMRequest{ write: True, responseOnWrite: False, address: truncate(addr_blkinfo), datain: blkinfo_vec}
+			BRAMRequest{ write: True, responseOnWrite: False, address: truncate(addr), datain: blkinfo_vec}
 		);
 
-		let response = curWriteCmd;
-		response.fcmd.block = extend(block);
-		respQ.enq(response);
+	endrule
+
+	let isQ5Erase = (tpl_1(procUpdateQs[5].first) == 0);
+
+	rule updateBlkInfo5 (inProgress && procUpdateQs[5].notEmpty && blkScanIssued == True);
+		if(verbose) $display("[%d] updateBlkInfo5", cnt);
+		blkScanIssued <= False;
+		inProgress <= False;
+
+		let cmd = tpl_2(procUpdateQs[5].first).cmd;
+		let lpa = tpl_2(procUpdateQs[5].first).lpa;
+
+		procUpdateQs[5].deq;
+		respQ.enq(cmd);
+
+		let addr_blkmap = { getSegmentT(lpa), getVirtBlkT(lpa) };
+		MapEntry entry;
+
+		if(isQ5Erase) begin
+			entry = MapEntry{status: NOT_ALLOCATED, block: 0};
+		end
+		else begin
+			BlockT block = truncate(cmd.fcmd.block);
+			entry = MapEntry{status: ALLOCATED, block: zeroExtend(block)};
+		end
+
+		blockmap.portA.request.put ( 
+			BRAMRequest{write: True, responseOnWrite: False, address: addr_blkmap, datain: entry}
+		);
 	endrule
 
 	interface translateReq = toPut(reqQ);
