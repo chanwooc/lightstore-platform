@@ -115,6 +115,9 @@ module mkTestAFTL(Empty);
 	endrule
 
 	Reg#(Bit#(32)) resp_cnt <- mkReg(0);
+	Reg#(Bit#(16)) resp_cnt_err <- mkReg(0);
+
+	(* descending_urgency = "proc_resp, proc_resp_err" *)
 	rule proc_resp ;
 		let ans <- aftl.resp.get;
 		resp_cnt <= resp_cnt + 1;
@@ -124,7 +127,6 @@ module mkTestAFTL(Empty);
 		end
 	endrule
 
-	Reg#(Bit#(16)) resp_cnt_err <- mkReg(0);
 	rule proc_resp_err ;
 		let ans <- aftl.respError.get;
 		resp_cnt_err <= resp_cnt_err + 1;

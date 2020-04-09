@@ -5,6 +5,8 @@ import SpecialFIFOs::*;
 import BRAM::*;
 import BRAMFIFO::*;
 
+import Ehr::*;
+
 import GetPut::*;
 import ClientServer::*;
 import Connectable::*;
@@ -169,7 +171,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	BRAM2Port#(Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)), Vector#(BlkInfoEntriesPerWord, BlkInfoEntry)) blkinfo <- mkBRAM2Server(blk_conf);
 	// BRAM2PortBE#(Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)), Vector#(BlkInfoEntriesPerWord, BlkInfoEntry), TDiv#(TMul#(SizeOf#(BlkInfoEntry), BlkInfoEntriesPerWord), 8)) blkinfo <- mkBRAM2ServerBE(blk_conf);
 
-	//FIFO#(FTLCmd) procQ <- mkPipelinedFIFO; // Size == 1, Only 1 req in-flight
+	// FIFO#(FTLCmd) procQ <- mkPipelinedFIFO; // Size == 1, Only 1 req in-flight
 	// FIFOF#(FTLCmd) procQ <- mkFIFOF1; // Size == 1, Only 1 req in-flight
 
 	FIFOF#(FTLCmd) procQ <- mkFIFOF; 
@@ -242,7 +244,6 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 			NOT_ALLOCATED: begin
 				case (procQ.first.op)
 					READ_PAGE, ERASE_BLOCK: begin
-						inProgress <= False;
 						resp_errorQ.enq(procQ.first);
 					end
 					WRITE_PAGE: procQ_W_trig.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
@@ -250,26 +251,22 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 			end
 
 			default: begin
-				inProgress <= False;
 				resp_errorQ.enq(procQ.first);
 			end
 		endcase
 	endrule
 
 	rule procAftlRead (inProgress);
-		inProgress <= False;
-
 		procQ_R.deq;
 		respQ.enq(procQ_R.first.cmd);
 	endrule
 
 	rule procAftlWriteAllocated (inProgress);
-		inProgress <= False;
-
 		procQ_W.deq;
 		respQ.enq(procQ_W.first.cmd);
 	endrule
 
+	(* descending_urgency = "procAftlErase, procAftlWriteNotAllocated" *) // urgency for procUpdateQs[0]
 	rule procAftlErase (inProgress);
 		procQ_E.deq;
 
@@ -405,6 +402,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 
 	// WRITE command only: miss AFTL -> new allocation
 	// SCAN continued (final processing)
+	(* descending_urgency = "checkMapping0, updateBlkInfo0, updateBlkInfo2" *) // urgency for resp_errorQ & procUpdateQs[3]
 	rule updateBlkInfo2 (inProgress && procUpdateQs[2].notEmpty);
 		if(verbose) $display("[%d] updateBlkInfo2", cnt);
 		if (blkScanFinalCnt == 0) begin
@@ -433,13 +431,12 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 				procUpdateQs[3].enq(procCmd);
 			end
 			else begin
-				inProgress <= False;
 				let procCmd <- toGet(procUpdateQs[2]).get;
 
 				let fcmd = tpl_2(procUpdateQs[2].first).cmd.fcmd;
 
 				FTLCmd resp_err
-				= FTLCmd{ tag: fcmd.tag, op: WRITE_PAGE, lpa: tpl_2(procUpdateQs[2].first).lpa };
+					= FTLCmd{ tag: fcmd.tag, op: WRITE_PAGE, lpa: tpl_2(procUpdateQs[2].first).lpa };
 
 				resp_errorQ.enq(resp_err);
 			end
@@ -531,10 +528,10 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 
 	let isQ5Erase = (tpl_1(procUpdateQs[5].first) == 0);
 
+	(* descending_urgency = "procAftlRead, procAftlWriteAllocated, updateBlkInfo5, updateBlkInfo4, updateBlkInfo3, updateBlkInfo1" *)
 	rule updateBlkInfo5 (inProgress && procUpdateQs[5].notEmpty && blkScanIssued == True);
 		if(verbose) $display("[%d] updateBlkInfo5", cnt);
 		blkScanIssued <= False;
-		inProgress <= False;
 
 		let cmd = tpl_2(procUpdateQs[5].first).cmd;
 		let lpa = tpl_2(procUpdateQs[5].first).lpa;
@@ -559,8 +556,20 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	endrule
 
 	interface translateReq = toPut(reqQ);
-	interface resp = toGet(respQ);
-	interface respError = toGet(resp_errorQ);
+	interface Get resp;
+		method ActionValue#(MultiFlashCmd) get if (inProgress);
+			let d <- toGet(respQ).get;
+			inProgress <= False;
+			return d;
+		endmethod
+	endinterface
+	interface Get respError;
+		method ActionValue#(FTLCmd) get if (inProgress);
+			let d <- toGet(resp_errorQ).get;
+			inProgress <= False;
+			return d;
+		endmethod
+	endinterface
 	interface map_portB = blockmap.portB;
 	interface blkinfo_portB = blkinfo.portB;
 endmodule
