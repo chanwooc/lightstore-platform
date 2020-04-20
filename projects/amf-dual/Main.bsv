@@ -52,30 +52,37 @@ typedef struct {
 
 interface AmfRequest;
 	// Request & Debug interface
-	method Action makeReq(AmfRequestT req, Bit#(32) offset);
-	method Action debugDumpReq(Bit#(32) card);
+	// method Action makeReq(AmfRequestT req, Bit#(32) offset);
+	method Action makeReq(AmfRequestT req);
+	method Action debugDumpReq(Bit#(8) card);
 
 	// DMA-related
 	method Action setDmaReadRef(Bit#(32) sgId);
 	method Action setDmaWriteRef(Bit#(32) sgId);
 
 	// FTL-related
+	method Action askAftlLoaded();
+	method Action setAftlLoaded();
+
 	method Action updateMapping(Bit#(19) seg_virtblk, Bit#(1) allocated, Bit#(14) mapped_block);
 	method Action readMapping(Bit#(19) seg_virtblk);
 	method Action updateBlkInfo(Bit#(16) phyaddr_upper, Vector#(8, Bit#(16)) blkinfo_vec);
 	method Action readBlkInfo(Bit#(16) phyaddr_upper);
+
+	method Action eraseRawBlock(Bit#(1) card, Bit#(3) bus, Bit#(3) chip, Bit#(12) block, Bit#(7) tag);
 endinterface
 
 interface AmfIndication;
-	method Action readDone(Bit#(32) tag);
-	method Action writeDone(Bit#(32) tag);
-	method Action eraseDone(Bit#(32) tag, Bit#(32) status);
+	method Action readDone(Bit#(7) tag);
+	method Action writeDone(Bit#(7) tag);
+	method Action eraseDone(Bit#(7) tag, Bit#(2) status); // status[1]: isRawCmd?, status[0]: isBlockBad?
 	method Action debugDumpResp(Bit#(32) debug0, Bit#(32) debug1, Bit#(32) debug2, Bit#(32) debug3, Bit#(32) debug4, Bit#(32) debug5);
 	
 	// FTL-related
 	method Action respAftlFailed(AmfRequestT resp);
 	method Action respReadMapping(Bit#(1) allocated, Bit#(14) block_num);
 	method Action respReadBlkInfo(Vector#(8, Bit#(16)) blkinfo_vec);
+	method Action respAftlLoaded(Bit#(1) resp);
 endinterface
 
 typedef 128 DmaBurstBytes; 
@@ -94,8 +101,11 @@ Integer realBurstsPerPage = pageSize8192/dmaBurstBytes; // 64
 
 Integer padDmaExtra = wordBytes; // Send extra 16B instead of indication
 
-Integer dmaAllocPageSizeLog = 13; //typically portal alloc page size is 8KB; MUST MATCH SW
 Integer dmaLength = realBurstsPerPage * dmaBurstBytes; // 64 * 128 = 8192
+
+// DMA Buffer Size: 16 KB per tag (TODO: MUST MATCH SW)
+//  (extra bytes for read Acks)
+Integer dmaPerTagOffsetLog = 14;
 
 interface MainIfc;
 	interface AmfRequest request;
@@ -108,14 +118,18 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 	Clock init_clock = derivedClock;
 	Reset init_reset = derivedReset;
 
+
 	let aftl <- mkAFTL128;
+	Reg#(Bool) aftlLoaded <- mkReg(False);
+	FIFO#(Bool) aftlLoadedRespQ <- mkFIFO;
 
 	Reg#(Bit#(64)) cycleCnt <- mkReg(0);
 	Vector#(NumTags, Reg#(BusT)) tag2busTable <- replicateM(mkRegU());
+	Vector#(NumTags, Reg#(Bool)) tagIsRawCmd <- replicateM(mkReg(False));
 
 	// Offset - pointer
-	Vector#(NumTags, Reg#(Bit#(32))) dmaWriteOffset <- replicateM(mkRegU());
-	Vector#(NumTags, Reg#(Bit#(32))) dmaReadOffset <- replicateM(mkRegU());
+	// Vector#(NumTags, Reg#(Bit#(32))) dmaWriteOffset <- replicateM(mkRegU());
+	// Vector#(NumTags, Reg#(Bit#(32))) dmaReadOffset <- replicateM(mkRegU());
 
 	//--------------------------------------------
 	// Flash Controller
@@ -170,7 +184,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 
 	function Bit#(32) calcDmaPageOffset(TagT tag);
 		Bit#(32) off = zeroExtend(tag);
-		return (off<< dmaAllocPageSizeLog);
+		return (off << dmaPerTagOffsetLog);
 	endfunction
 
 	rule incCycle;
@@ -273,7 +287,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 			rule initiateDmaWritePipe;
 				dmaWriteReqQ[b].deq;
 				let tag = dmaWriteReqQ[b].first;
-				let offset = dmaWriteOffset[tag];
+				// let offset = dmaWriteOffset[tag];
+				let offset = calcDmaPageOffset(tag);
 				dmaWriteReqPipe.enq(tuple2(tag,offset));
 			endrule
 
@@ -370,7 +385,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 		for (Integer b=0; b<valueOf(NUM_ENG_PORTS); b=b+1) begin
 			rule initDmaRead;
 				let tag = dmaReadReqQ[b].first;
-				let offset = dmaReadOffset[tag];
+				// let offset = dmaReadOffset[tag];
+				let offset = calcDmaPageOffset(tag);
 				let dmaCmd = MemengineCmd {
 									sglId: dmaReadSgid, 
 									base: zeroExtend(offset),
@@ -450,8 +466,14 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 		StatusT st = tpl_2(ackQ.first);
 		case (st)
 			WRITE_DONE: indication.writeDone(zeroExtend(tag));
-			ERASE_DONE: indication.eraseDone(zeroExtend(tag), 0);
-			ERASE_ERROR: indication.eraseDone(zeroExtend(tag), 1);
+			ERASE_DONE: begin
+				indication.eraseDone(zeroExtend(tag), {pack(tagIsRawCmd[tag]), 1'b0});
+				tagIsRawCmd[tag] <= False;
+			end
+			ERASE_ERROR: begin
+				indication.eraseDone(zeroExtend(tag), {pack(tagIsRawCmd[tag]), 1'b1});
+				tagIsRawCmd[tag] <= False;
+			end
 		endcase
 	endrule
 
@@ -541,22 +563,55 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 		indication.respReadBlkInfo(reverse(vec));
 	endrule
 
+	rule respAftlLoaded;
+		aftlLoadedRespQ.deq;
+		indication.respAftlLoaded(pack(aftlLoaded));
+	endrule
+
 	interface AmfRequest request;
-		method Action makeReq(AmfRequestT req, Bit#(32) offset);
+		// method Action makeReq(AmfRequestT req, Bit#(32) offset);
+		method Action makeReq(AmfRequestT req);
 			FlashOp op = INVALID;
 			case (req.cmd)
 				AmfREAD: begin
 					op = READ_PAGE;
-					dmaWriteOffset[req.tag] <= offset;
+					// dmaWriteOffset[req.tag] <= offset;
 				end
 				AmfWRITE: begin
 					op = WRITE_PAGE;
-					dmaReadOffset[req.tag] <= offset;
+					// dmaReadOffset[req.tag] <= offset;
 				end
 				AmfERASE: op = ERASE_BLOCK;
 			endcase
 
 			aftl.translateReq.put( FTLCmd{ tag: req.tag, op: op, lpa: truncate(req.lpa) } ); // truncate due to BSIM
+		endmethod
+
+		method Action eraseRawBlock(Bit#(1) card, Bit#(3) bus, Bit#(3) chip, Bit#(12) block, Bit#(7) tag);
+			FlashCmd fcmd = FlashCmd{
+				tag: tag,
+				op: ERASE_BLOCK,
+				bus: truncate(bus),
+				chip: chip,
+				block: zeroExtend(block),
+				page: 0
+			};
+
+			tagIsRawCmd[tag] <= True;
+
+			if (card == 0)
+				flashCtrls[0].user.sendCmd(fcmd);
+			else
+				flashCtrls[1].user.sendCmd(fcmd);
+
+		endmethod
+
+		method Action askAftlLoaded();
+			aftlLoadedRespQ.enq(?);
+		endmethod
+
+		method Action setAftlLoaded();
+			aftlLoaded <= True;
 		endmethod
 
 		method Action setDmaReadRef(Bit#(32) sgId);
@@ -567,7 +622,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 			dmaWriteSgid <= sgId;
 		endmethod
 
-		method Action debugDumpReq(Bit#(32) card);
+		method Action debugDumpReq(Bit#(8) card);
 			if (card == 0) debugReqQ0.enq(1);
 			else debugReqQ1.enq(1);
 		endmethod
