@@ -12,7 +12,9 @@ PIN_TYPE_INCLUDE=Top_Pins
 AUTOTOP=--interface pins:Main.pins
 
 BSVFILES = Main.bsv
+
 CPPFILES = main.cpp
+CPPFILES += $(CONNECTALDIR)/cpp/DmaBuffer.cpp
 
 BSVPATH += ../../lib \
 		   ../../platform/flash_ctrl/common \

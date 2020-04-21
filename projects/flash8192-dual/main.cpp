@@ -14,7 +14,7 @@
 #include <time.h>
 
 // Connectal DMA interface
-#include "dmaManager.h"
+#include "DmaBuffer.h"
 
 // Connectal HW-SW interface
 #include "FlashIndication.h"
@@ -22,8 +22,8 @@
 
 // Test Definitions
 // #define TEST_ERASE_ALL		 // eraseAll.exe's only test
-#define MINI_TEST_SUITE
-// #define TEST_READ_SPEED
+// #define MINI_TEST_SUITE
+#define TEST_READ_SPEED
 // #define TEST_WRITE_SPEED
 // #define KT_WRITE
 // #define KT_READ
@@ -90,6 +90,9 @@ unsigned int* dstBuffer;
 unsigned int* srcBuffer;
 unsigned int* readBuffers[NUM_TAGS];
 unsigned int* writeBuffers[NUM_TAGS];
+
+char* readUserBuffers[NUM_TAGS]; // test memcpy on x86
+
 TagTableEntry readTagTable[NUM_TAGS];
 TagTableEntry writeTagTable[NUM_TAGS];
 TagTableEntry eraseTagTable[NUM_TAGS];
@@ -169,6 +172,8 @@ void *check_read_buffer_done(void *ptr) {
 			}
 
 			if (readTagTable[tag].checkRead) readPassed = checkReadData(tag);
+
+			memcpy(readUserBuffers[tag], readBuffers[tag], 8192);
 
 			pthread_mutex_lock(&flashReqMutex);
 			if ( readTagTable[tag].checkRead && readPassed == false ) {
@@ -480,25 +485,23 @@ int main(int argc, const char **argv)
 	// Device initialization
 	device = new FlashRequestProxy(IfcNames_FlashRequestS2H);
 	FlashIndication deviceIndication(IfcNames_FlashIndicationH2S);
-	DmaManager *dma = platformInit();
 	
 	// Memory-allocation for DMA
-	srcAlloc = portalAlloc(srcAlloc_sz, 0);
-	dstAlloc = portalAlloc(dstAlloc_sz, 0);
-	srcBuffer = (unsigned int *)portalMmap(srcAlloc, srcAlloc_sz);
-	dstBuffer = (unsigned int *)portalMmap(dstAlloc, dstAlloc_sz);
+	DmaBuffer* srcDmaBuf = new DmaBuffer(srcAlloc_sz);
+	DmaBuffer* dstDmaBuf = new DmaBuffer(dstAlloc_sz);
 
-	fprintf(stderr, "dstAlloc = %x\n", dstAlloc); 
-	fprintf(stderr, "srcAlloc = %x\n", srcAlloc); 
+	srcBuffer = (unsigned int*)srcDmaBuf->buffer();
+	dstBuffer = (unsigned int*)dstDmaBuf->buffer();
 
-	// Memory-mapping for DMA
-	portalCacheFlush(dstAlloc, dstBuffer, dstAlloc_sz, 1);
-	portalCacheFlush(srcAlloc, srcBuffer, srcAlloc_sz, 1);
-	ref_dstAlloc = dma->reference(dstAlloc);
-	ref_srcAlloc = dma->reference(srcAlloc);
+	srcDmaBuf->cacheInvalidate(0, 1);
+	dstDmaBuf->cacheInvalidate(0, 1);
+
+	ref_srcAlloc = srcDmaBuf->reference();
+	ref_dstAlloc = dstDmaBuf->reference();
 
 	fprintf(stderr, "ref_dstAlloc = %x\n", ref_dstAlloc); 
 	fprintf(stderr, "ref_srcAlloc = %x\n", ref_srcAlloc); 
+
 
 	device->setDmaWriteRef(ref_dstAlloc);
 	device->setDmaReadRef(ref_srcAlloc);
@@ -512,6 +515,8 @@ int main(int argc, const char **argv)
 		int byteOffset = t * FPAGE_SIZE;
 		readBuffers[t] = dstBuffer + byteOffset/sizeof(unsigned int);
 		writeBuffers[t] = srcBuffer + byteOffset/sizeof(unsigned int);
+
+		readUserBuffers[t] = new char[8192];
 	}
 
 	for (int card=0; card < 2 ; card++) {
@@ -890,10 +895,15 @@ int main(int argc, const char **argv)
 	pthread_join(check_thread, NULL);
 	fprintf(stderr, "Checker released\n");
 
-	dma->dereference(ref_srcAlloc);
-	dma->dereference(ref_dstAlloc);
-	portalMunmap(srcBuffer, srcAlloc_sz);
-	portalMunmap(dstBuffer, dstAlloc_sz);
+	delete srcDmaBuf;
+	delete dstDmaBuf;
+
+
+	for (int t = 0; t < NUM_TAGS; t++) {
+		if(readUserBuffers[t][0] == 9349293) fprintf(stderr, "%s", readUserBuffers[t]);
+		delete [] readUserBuffers[t];
+	}
+
 	fprintf(stderr, "Done releasing DMA!\n");
 
 }
