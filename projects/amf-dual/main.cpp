@@ -14,7 +14,7 @@
 #include <time.h>
 
 // Connectal DMA interface
-#include "dmaManager.h"
+#include "DmaBuffer.h"
 
 // Connectal HW-SW interface
 #include "AmfIndication.h"
@@ -59,12 +59,116 @@
 #define FPAGE_SIZE_VALID (8192)
 #define NUM_TAGS 128
 
+#define NUM_SEGMENTS BLOCKS_PER_CHIP
+#define NUM_VIRTBLKS (NUM_CARDS*NUM_BUSES*CHIPS_PER_BUS)
+
+typedef enum {
+	NOT_ALLOCATED = 0,
+	ALLOCATED
+} MapStatusT;
+
+MapStatusT mapStatus[NUM_SEGMENTS][NUM_VIRTBLKS];
+uint16_t mappedBlock[NUM_SEGMENTS][NUM_VIRTBLKS];
+
 typedef enum {
 	FREE = 0, // ready to be allocated
 	USED, // allocated
 	BAD,
 	UNKNOWN
-} FlashStatusT;
+} BlockStatusT;
+
+BlockStatusT blockStatus[NUM_CARDS][NUM_BUSES][CHIPS_PER_BUS][BLOCKS_PER_CHIP];
+uint16_t blockPE[NUM_CARDS][NUM_BUSES][CHIPS_PER_BUS][BLOCKS_PER_CHIP];
+
+#define TABLE_SZ ((sizeof(uint16_t)*NUM_SEGMENTS*NUM_VIRTBLKS))
+
+int __readAFTLfromFile (const char* path) {
+	char *filebuf = new char[2*TABLE_SZ];
+
+	uint16_t (*mapRaw)[NUM_VIRTBLKS] = (uint16_t(*)[NUM_VIRTBLKS])(filebuf);
+	uint16_t (*blkInfoRaw)[NUM_BUSES][CHIPS_PER_BUS][BLOCKS_PER_CHIP] = (uint16_t(*)[NUM_BUSES][CHIPS_PER_BUS][BLOCKS_PER_CHIP])(filebuf+TABLE_SZ);
+
+	FILE *fp = fopen(path, "r");
+	if(fp) {
+		size_t rsz = fread(filebuf, 2*TABLE_SZ, 1, fp);
+		fclose(fp);
+
+		if (rsz == 0) {
+			fprintf(stderr, "error reading %s, size might not match\n", path);
+			delete [] filebuf;
+			return -1;
+		}
+	} else {
+		fprintf(stderr, "error reading %s, file does not exist\n", path);
+		delete [] filebuf;
+		return -1;
+	}
+
+	for (int i = 0; i < NUM_SEGMENTS; i++) {
+		for (int j = 0; j < NUM_VIRTBLKS; j++) {
+			mapStatus[i][j] = (MapStatusT)(mapRaw[i][j] >> 14);
+			mappedBlock[i][j] = mapRaw[i][j] & 0x3fff;
+		}
+	}
+
+	for (int i = 0; i < NUM_CARDS; i++) {
+		for (int j = 0; j < NUM_BUSES; j++) {
+			for (int k = 0; k < CHIPS_PER_BUS; k++) {
+				for (int l = 0; l < BLOCKS_PER_CHIP; l++) {
+					blockStatus[i][j][k][l] = (BlockStatusT)(blkInfoRaw[i][j][k][l] >> 14);
+					blockPE[i][j][k][l] = blkInfoRaw[i][j][k][l] & 0x3fff;
+				}
+			}
+		}
+	}
+
+	delete [] filebuf;
+	return 0;
+}
+
+int __writeAFTLtoFile (const char* path) {
+	char *filebuf = new char[2*TABLE_SZ];
+
+	uint16_t (*mapRaw)[NUM_VIRTBLKS] = (uint16_t(*)[NUM_VIRTBLKS])(filebuf);
+	uint16_t (*blkInfoRaw)[NUM_BUSES][CHIPS_PER_BUS][BLOCKS_PER_CHIP] = (uint16_t(*)[NUM_BUSES][CHIPS_PER_BUS][BLOCKS_PER_CHIP])(filebuf+TABLE_SZ);
+
+	for (int i = 0; i < NUM_SEGMENTS; i++) {
+		for (int j = 0; j < NUM_VIRTBLKS; j++) {
+			mapRaw[i][j] = (mapStatus[i][j] << 14) | (mappedBlock[i][j] & 0x3fff);
+		}
+	}
+
+	for (int i = 0; i < NUM_CARDS; i++) {
+		for (int j = 0; j < NUM_BUSES; j++) {
+			for (int k = 0; k < CHIPS_PER_BUS; k++) {
+				for (int l = 0; l < BLOCKS_PER_CHIP; l++) {
+					blkInfoRaw[i][j][k][l] = (blockStatus[i][j][k][l] << 14) | (blockPE[i][j][k][l] & 0x3fff);
+				}
+			}
+		}
+	}
+
+	FILE *fp = fopen(path, "w");
+	if(fp) {
+		size_t wsz = fwrite(filebuf, 2*TABLE_SZ, 1, fp);
+		fclose(fp);
+
+		if (wsz == 0) {
+			fprintf(stderr, "error writing %s\n", path);
+			delete [] filebuf;
+			return -1;
+		}
+	} else {
+		fprintf(stderr, "error writing %s, file could not be open or created\n", path);
+		delete [] filebuf;
+		return -1;
+	}
+
+
+	delete [] filebuf;
+	return 0;
+}
+
 
 typedef struct {
 	bool checkRead;
@@ -106,7 +210,6 @@ unsigned int* writeBuffers[NUM_TAGS];
 //TagTableEntry readTagTable[NUM_TAGS];
 TagTableEntry writeTagTable[NUM_TAGS];
 
-FlashStatusT flashStatus[NUM_CARDS][NUM_BUSES][CHIPS_PER_BUS][BLOCKS_PER_CHIP];
 TagTableEntry eraseTagTable[NUM_TAGS];
 
 TagTableEntry2 readTagTable[NUM_TAGS];
@@ -269,7 +372,8 @@ class AmfIndication: public AmfIndicationWrapper {
 			}
 
 			if (isRawCmd) {
-				flashStatus[entry.card][entry.bus][entry.chip][entry.block] = isBadBlock? BAD: FREE;
+				blockStatus[entry.card][entry.bus][entry.chip][entry.block] = isBadBlock? BAD: FREE;
+				blockPE[entry.card][entry.bus][entry.chip][entry.block]++;
 			}
 
 
@@ -661,26 +765,23 @@ int main(int argc, const char **argv)
 	// Device initialization
 	device = new AmfRequestProxy(IfcNames_AmfRequestS2H);
 	AmfIndication deviceIndication(IfcNames_AmfIndicationH2S);
-	DmaManager *dma = platformInit();
-	
+
 	// Memory-allocation for DMA
-	srcAlloc = portalAlloc(srcAlloc_sz, 0);
-	dstAlloc = portalAlloc(dstAlloc_sz, 0);
-	srcBuffer = (unsigned int *)portalMmap(srcAlloc, srcAlloc_sz);
-	dstBuffer = (unsigned int *)portalMmap(dstAlloc, dstAlloc_sz);
+	DmaBuffer* srcDmaBuf = new DmaBuffer(srcAlloc_sz);
+	DmaBuffer* dstDmaBuf = new DmaBuffer(dstAlloc_sz);
 
-	fprintf(stderr, "dstAlloc = %x\n", dstAlloc); 
-	fprintf(stderr, "srcAlloc = %x\n", srcAlloc); 
+	srcBuffer = (unsigned int*)srcDmaBuf->buffer();
+	dstBuffer = (unsigned int*)dstDmaBuf->buffer();
 
-	// Memory-mapping for DMA
-	portalCacheFlush(dstAlloc, dstBuffer, dstAlloc_sz, 1);
-	portalCacheFlush(srcAlloc, srcBuffer, srcAlloc_sz, 1);
-	ref_dstAlloc = dma->reference(dstAlloc);
-	ref_srcAlloc = dma->reference(srcAlloc);
+	srcDmaBuf->cacheInvalidate(0, 1);
+	dstDmaBuf->cacheInvalidate(0, 1);
+
+	ref_srcAlloc = srcDmaBuf->reference();
+	ref_dstAlloc = dstDmaBuf->reference();
 
 	fprintf(stderr, "ref_dstAlloc = %x\n", ref_dstAlloc); 
 	fprintf(stderr, "ref_srcAlloc = %x\n", ref_srcAlloc); 
-
+	
 	device->setDmaWriteRef(ref_dstAlloc);
 	device->setDmaReadRef(ref_srcAlloc);
 
@@ -700,9 +801,17 @@ int main(int argc, const char **argv)
 		for (int bus=0; bus< NUM_BUSES; bus++) {
 			for (int c=0; c < CHIPS_PER_BUS; c++) {
 				for (int blk=0; blk < BLOCKS_PER_CHIP; blk++) {
-					flashStatus[card][bus][c][blk] = UNKNOWN;
+					blockStatus[card][bus][c][blk] = UNKNOWN;
+					blockPE[card][bus][c][blk] = 0;
 				}
 			}
+		}
+	}
+
+	for (int seg=0; seg < NUM_SEGMENTS; seg++) {
+		for (int virt_blk=0; virt_blk < NUM_VIRTBLKS; virt_blk++) {
+			mapStatus[seg][virt_blk] = NOT_ALLOCATED;
+			mappedBlock[seg][virt_blk] = 0;
 		}
 	}
 
@@ -713,22 +822,21 @@ int main(int argc, const char **argv)
 		}
 	}
 
-	// read done checker
+	// read done checker thread
 	pthread_t check_thread;
 	if(pthread_create(&check_thread, NULL, check_read_buffer_done, NULL)) {
 		fprintf(stderr, "Error creating thread\n");
 		return -1;
 	}
 
-	long actualFrequency=0;
-	long requestedFrequency=1e9/MainClockPeriod;
-	int status = setClockFrequency(0, requestedFrequency, &actualFrequency);
-	fprintf(stderr, "HW Operating Freq - Requested: %5.2f, Actual: %5.2f, status=%d\n"
-			,(double)requestedFrequency*1.0e-6
-			,(double)actualFrequency*1.0e-6,status);
 
-	fprintf(stderr, "Done initializing Hardware & DMA!\n" ); 
-	fflush(stderr);
+	/* Not needed for x86 */
+	// long actualFrequency=0;
+	// long requestedFrequency=1e9/MainClockPeriod;
+	// int status = setClockFrequency(0, requestedFrequency, &actualFrequency);
+	// fprintf(stderr, "HW Operating Freq - Requested: %5.2f, Actual: %5.2f, status=%d\n"
+	// 		,(double)requestedFrequency*1.0e-6
+	// 		,(double)actualFrequency*1.0e-6,status);
 
 	fprintf(stderr, "Test Start!\n" );
 	fflush(stderr);
@@ -753,6 +861,7 @@ int main(int argc, const char **argv)
 
 	// TODO: My Test
 	
+	//if(0)
 	{
 		verbose_req = true;
 		verbose_resp = true;
@@ -798,7 +907,7 @@ int main(int argc, const char **argv)
 			for (uint8_t bus = 0; bus < NUM_BUSES; bus++) {
 				for (uint8_t chip = 0; chip < CHIPS_PER_BUS; chip++) {
 					for (uint16_t blk = 0; blk <  BLOCKS_PER_CHIP; blk++) {
-						FlashStatusT status = flashStatus[card][bus][chip][blk];
+						BlockStatusT status = blockStatus[card][bus][chip][blk];
 
 						fprintf(stderr, "%u %u %u %u: ", card, bus, chip, blk);
 						if(status == FREE)
@@ -810,6 +919,42 @@ int main(int argc, const char **argv)
 						else fprintf(stderr, "UNKNOWN\n");
 					}
 				}
+			}
+
+		}
+
+		// TODO: mapping file io test
+		{
+			if(__writeAFTLtoFile("map.bin")!=0) {
+				fprintf (stderr, "file io error Write\n");
+				return -1;
+			}
+
+			fprintf(stderr, " map written, now clearing \n");
+				
+			for (int card=0; card < NUM_CARDS ; card++) {
+				for (int bus=0; bus< NUM_BUSES; bus++) {
+					for (int c=0; c < CHIPS_PER_BUS; c++) {
+						for (int blk=0; blk < BLOCKS_PER_CHIP; blk++) {
+							blockStatus[card][bus][c][blk] = UNKNOWN;
+							blockPE[card][bus][c][blk] = 0;
+						}
+					}
+				}
+			}
+
+			for (int seg=0; seg < NUM_SEGMENTS; seg++) {
+				for (int virt_blk=0; virt_blk < NUM_VIRTBLKS; virt_blk++) {
+					mapStatus[seg][virt_blk] = NOT_ALLOCATED;
+					mappedBlock[seg][virt_blk] = 0;
+				}
+			}
+
+			fprintf(stderr, " map restoring \n");
+
+			if(__readAFTLfromFile("map.bin")) {
+				fprintf (stderr, "file io error Read\n");
+				return -1;
 			}
 		}
 
@@ -825,7 +970,7 @@ int main(int argc, const char **argv)
 					for (uint16_t blk = 0; blk < BLOCKS_PER_CHIP; blk++) {
 
 						int idx = blk % 8;
-						entry_vec[idx] = (uint16_t)(flashStatus[card][bus][chip][blk] << 14);
+						entry_vec[idx] = (uint16_t)(blockStatus[card][bus][chip][blk] << 14);
 
 						if (idx == 7) {
 							device->updateBlkInfo((uint16_t)(blk_cnt>>3), entry_vec);
@@ -857,7 +1002,6 @@ int main(int argc, const char **argv)
 			}
 		}
 
-		fprintf(stderr, "ERASE ALL 444444\n");
 
 		elapsed = 10000;
 		while (true) {
@@ -893,16 +1037,16 @@ int main(int argc, const char **argv)
 		timespec start, now;
 
 		clock_gettime(CLOCK_REALTIME, &start);
-		testWrite2(device, 1024*1024/8, 1024*1024/8 * 9 , false);
+		testWrite2(device, 0, 1024*1024/8 * 4, false);
 		clock_gettime(CLOCK_REALTIME, & now);
 
-		fprintf(stderr, "WRITE SPEED: %f MB/s\n", ((1024*1024*9)/1000)/timespec_diff_sec(start,now));
+		fprintf(stderr, "WRITE SPEED: %f MB/s\n", ((1024*1024*4)/1000)/timespec_diff_sec(start,now));
 
 		clock_gettime(CLOCK_REALTIME, &start);
-		testRead2(device, 0, 1024*1024/8 * 10 , false);
+		testRead2(device, 0, 1024*1024/8 * 4 , false);
 		clock_gettime(CLOCK_REALTIME, & now);
 
-		fprintf(stderr, "READ SPEED: %f MB/s\n", ((1024*1024*10)/1000)/timespec_diff_sec(start,now));
+		fprintf(stderr, "READ SPEED: %f MB/s\n", ((1024*1024*4)/1000)/timespec_diff_sec(start,now));
 	}
 #endif
 
@@ -1008,10 +1152,9 @@ int main(int argc, const char **argv)
 	pthread_join(check_thread, NULL);
 	fprintf(stderr, "Checker released\n");
 
-	dma->dereference(ref_srcAlloc);
-	dma->dereference(ref_dstAlloc);
-	portalMunmap(srcBuffer, srcAlloc_sz);
-	portalMunmap(dstBuffer, dstAlloc_sz);
+	delete srcDmaBuf;
+	delete dstDmaBuf;
+
 	fprintf(stderr, "Done releasing DMA!\n");
 
 }

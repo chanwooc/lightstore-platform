@@ -1,5 +1,6 @@
 CONNECTALDIR=../../tools/connectal/
 
+
 # Auto-top variables
 S2H_INTERFACES=AmfRequest:Main.request
 H2S_INTERFACES=Main:AmfIndication:host.derivedClock,host.derivedReset
@@ -14,6 +15,7 @@ AUTOTOP=--interface pins:Main.pins
 
 BSVFILES = Main.bsv
 CPPFILES = main.cpp
+CPPFILES += $(CONNECTALDIR)/cpp/DmaBuffer.cpp
 
 BSVPATH += ../../lib \
 		   ../../platform/flash_ctrl/common \
