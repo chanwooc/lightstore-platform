@@ -21,6 +21,10 @@
 #include "AmfRequest.h"
 
 // Test Definitions
+// #define TEST_AMF_ERASEALL
+// #define TEST_AMF_MAPPING1
+#define TEST_AMF_MAPPING2
+
 // #define TEST_AMF
 // #define TEST_ERASE_ALL		 // eraseAll.exe's only test
 // #define MINI_TEST_SUITE
@@ -193,7 +197,7 @@ AmfRequestProxy *device;
 
 pthread_mutex_t flashReqMutex;
 sem_t aftlLoadedSem;
-sem_t aftlBlkReadSem;
+sem_t aftlReadSem;
 
 //16k * 128
 size_t dstAlloc_sz = FPAGE_SIZE * NUM_TAGS * sizeof(unsigned char);
@@ -223,6 +227,7 @@ int curWritesInFlight = 0;
 int curErasesInFlight = 0;
 
 int blkInfoReads = 0;
+int mappingReads = 0;
 
 double timespec_diff_sec( timespec start, timespec end ) {
 	double t = end.tv_sec - start.tv_sec;
@@ -422,7 +427,15 @@ class AmfIndication: public AmfIndicationWrapper {
 		}
 
 		void respReadMapping(uint8_t allocated, uint16_t block_num) {
-			fprintf(stderr, "respReadMapping: allocated?%u, blk=%u\n", allocated, block_num);
+			int virt_blk = mappingReads%NUM_VIRTBLKS;
+			int seg = mappingReads/NUM_VIRTBLKS;
+
+			
+
+			mapStatus[seg][virt_blk] = (allocated==0)?NOT_ALLOCATED:ALLOCATED;
+			mappedBlock[seg][virt_blk] = block_num & 0x3fff;
+
+			mappingReads++;
 		}
 
 		void respReadBlkInfo(const uint16_t* blkinfo_vec ) {
@@ -433,7 +446,8 @@ class AmfIndication: public AmfIndicationWrapper {
 				uint8_t chip = (blkInfoReads >> 9) & 7;
 				uint16_t blk = (blkInfoReads & 511)*8+i;
 
-				uint8_t status = blkinfo_vec[i]>>14;
+				BlockStatusT status = blockStatus[card][bus][chip][blk] = (BlockStatusT)(blkinfo_vec[i]>>14);
+				blockPE[card][bus][chip][blk] = blkinfo_vec[i] & 0x3fff;
 
 				fprintf(stderr, "%u %u %u %u: ", card, bus, chip, blk);
 				if(status == FREE)
@@ -443,6 +457,8 @@ class AmfIndication: public AmfIndicationWrapper {
 				else if(status == BAD) 
 					fprintf(stderr, "BAD\n");
 				else fprintf(stderr, "UNKNOWN\n");
+
+
 			}
 
 			blkInfoReads++;
@@ -759,6 +775,7 @@ int main(int argc, const char **argv)
 	testPassed=true;
 	pthread_mutex_init(&flashReqMutex, NULL);
 	sem_init(&aftlLoadedSem, 0, 0);
+	sem_init(&aftlReadSem, 0, 0);
 
 	fprintf(stderr, "Initializing Connectal & DMA...\n");
 
@@ -861,7 +878,7 @@ int main(int argc, const char **argv)
 
 	// TODO: My Test
 	
-	//if(0)
+#if defined(TEST_AMF_ERASEALL)
 	{
 		verbose_req = true;
 		verbose_resp = true;
@@ -984,7 +1001,6 @@ int main(int argc, const char **argv)
 
 		fprintf(stderr, "ERASE ALL 333333\n");
 		blk_cnt = 0;
-		int maxReads = NUM_CARDS*NUM_BUSES*CHIPS_PER_BUS*BLOCKS_PER_CHIP/8;
 
 		for (uint8_t card=0; card < NUM_CARDS; card++) {
 			for (uint8_t bus = 0; bus < NUM_BUSES; bus++) {
@@ -1003,6 +1019,8 @@ int main(int argc, const char **argv)
 		}
 
 
+
+		int maxBlkInfoReads = NUM_CARDS*NUM_BUSES*CHIPS_PER_BUS*BLOCKS_PER_CHIP/8;
 		elapsed = 10000;
 		while (true) {
 			usleep(100);
@@ -1012,10 +1030,96 @@ int main(int argc, const char **argv)
 			else {
 				elapsed--;
 			}
-			if ( blkInfoReads == maxReads ) break;
+			if ( blkInfoReads == maxBlkInfoReads ) break;
 		}
 
 	}
+#endif
+
+#if defined(TEST_AMF_MAPPING1)
+	{
+		verbose_req = false;
+		verbose_resp = false;
+
+		timespec start, now;
+
+		clock_gettime(CLOCK_REALTIME, &start);
+		testWrite2(device, 0, 1024*1024/8 * 4, false);
+		clock_gettime(CLOCK_REALTIME, & now);
+
+		fprintf(stderr, "WRITE SPEED: %f MB/s\n", ((1024*1024*4)/1000)/timespec_diff_sec(start,now));
+
+		clock_gettime(CLOCK_REALTIME, &start);
+		testRead2(device, 0, 1024*1024/8 * 4 , false);
+		clock_gettime(CLOCK_REALTIME, & now);
+
+		fprintf(stderr, "READ SPEED: %f MB/s\n", ((1024*1024*4)/1000)/timespec_diff_sec(start,now));
+
+		fprintf(stderr, "READ MAPPING TABLE REQ\n");
+		uint32_t map_cnt = 0;
+		for (uint32_t seg=0; seg < NUM_SEGMENTS; seg++)  {
+			for (uint16_t virt_blk = 0; virt_blk < NUM_VIRTBLKS; virt_blk++) {
+				device->readMapping(map_cnt);
+				map_cnt++;
+			}
+		}
+
+		fprintf(stderr, "WAIT READ MAPPING TABLE RESP\n");
+
+		int maxMappingReads = NUM_SEGMENTS*NUM_VIRTBLKS;
+		int elapsed = 10000;
+		while (true) {
+			usleep(100);
+			if (elapsed == 0) {
+				elapsed=10000;
+			}
+			else {
+				elapsed--;
+			}
+			if (mappingReads == maxMappingReads ) break;
+		}
+
+		fprintf(stderr, "MAPPING TABLE FLUSHING\n");
+
+		__writeAFTLtoFile("map.bin");
+	}
+#endif
+
+#if defined(TEST_AMF_MAPPING2)
+	{
+		verbose_req = false;
+		verbose_resp = false;
+
+		timespec start, now;
+
+		fprintf(stderr, "READ TEST1\n");
+		testRead2(device, 0, 128, false);
+
+		fprintf(stderr, "update mapping\n");
+		__readAFTLfromFile("map.bin");
+
+		uint32_t map_cnt = 0;
+		for (uint32_t seg=0; seg < NUM_SEGMENTS; seg++)  {
+			for (uint16_t virt_blk = 0; virt_blk < NUM_VIRTBLKS; virt_blk++) {
+				device->updateMapping(map_cnt, (mapStatus[seg][virt_blk]==ALLOCATED)?1:0, mappedBlock[seg][virt_blk]);
+				map_cnt++;
+			}
+		}
+
+		sleep(1);
+		fprintf(stderr, "READ TEST2\n");
+
+		clock_gettime(CLOCK_REALTIME, &start);
+		testRead2(device, 0, 1024*1024/8 * 4 , false);
+		clock_gettime(CLOCK_REALTIME, & now);
+
+		fprintf(stderr, "READ SPEED: %f MB/s\n", ((1024*1024*4)/1000)/timespec_diff_sec(start,now));
+
+		testRead2(device, 1024*1024/8 * 4, 10, false);
+	}
+#endif
+
+
 
 
 #if defined(TEST_ERASE_ALL)
