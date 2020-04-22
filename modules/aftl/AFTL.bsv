@@ -101,7 +101,7 @@ typedef struct {
 `ifndef SIM_BRAM
 // DRAM FFFF
 // BRAM 0000
-typedef enum { FREE_BLK, DIRTY_BLK, USED_BLK, BAD_BLK } BlkStatus deriving (Bits, Eq);
+typedef enum { FREE_BLK, USED_BLK, BAD_BLK, DIRTY_BLK } BlkStatus deriving (Bits, Eq);
 `else
 // For testing. At BSIM, RAM is initialized to AAAAAAA
 typedef enum { BAD_BLK, DIRTY_BLK, FREE_BLK, USED_BLK } BlkStatus deriving (Bits, Eq);
