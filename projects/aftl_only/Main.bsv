@@ -31,9 +31,10 @@ import AFTL::*;
 
 // Custom types for SW-HW communication
 typedef enum {
-	AmfREAD,
+	AmfREAD = 0,
 	AmfWRITE,
 	AmfERASE,
+	AmfMARKBAD,
 	AmfINVALID
 } AmfCmdTypes deriving (Bits, Eq, FShow);
 
@@ -95,10 +96,10 @@ module mkMain#(AftlIndication indication)(MainIfc);
 	rule driveRespErr;
 		let r <- aftl.respError.get;
 		AmfCmdTypes cmd = AmfINVALID;
-		case (r.op)
-			READ_PAGE: cmd = AmfREAD;
-			WRITE_PAGE: cmd = AmfWRITE;
-			ERASE_BLOCK: cmd = AmfERASE;
+		case (r.cmd)
+			AftlREAD: cmd = AmfREAD;
+			AftlWRITE: cmd = AmfWRITE;
+			AftlERASE: cmd = AmfERASE;
 		endcase
 
 		indication.respFailed(
@@ -143,14 +144,15 @@ module mkMain#(AftlIndication indication)(MainIfc);
 
 	interface AftlRequest request;
 		method Action makeReq(AmfRequest req);
-			FlashOp op = INVALID;
+			AftlCmdTypes cmd = AftlINVALID;
 			case (req.cmd)
-				AmfREAD: op = READ_PAGE;
-				AmfWRITE: op = WRITE_PAGE;
-				AmfERASE: op = ERASE_BLOCK;
+				AmfREAD: cmd = AftlREAD;
+				AmfWRITE: cmd = AftlWRITE;
+				AmfERASE: cmd = AftlERASE;
+				AmfMARKBAD: cmd = AftlMARKBAD;
 			endcase
 
-			aftl.translateReq.put( FTLCmd{ tag: req.tag, op: op, lpa: req.lpa } );
+			aftl.translateReq.put( FTLCmd{ tag: req.tag, cmd: cmd, lpa: req.lpa } );
 		endmethod
 		method Action updateMapping(Bit#(19) seg_virtblk, Bit#(1) allocated, Bit#(14) mapped_block);
 			MapStatus new_status = (allocated==1)? ALLOCATED : NOT_ALLOCATED;

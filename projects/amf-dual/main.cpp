@@ -66,20 +66,20 @@
 #define NUM_SEGMENTS BLOCKS_PER_CHIP
 #define NUM_VIRTBLKS (NUM_CARDS*NUM_BUSES*CHIPS_PER_BUS)
 
-typedef enum {
+enum MapStatusT {
 	NOT_ALLOCATED = 0,
 	ALLOCATED
-} MapStatusT;
+};
 
 MapStatusT mapStatus[NUM_SEGMENTS][NUM_VIRTBLKS];
 uint16_t mappedBlock[NUM_SEGMENTS][NUM_VIRTBLKS];
 
-typedef enum {
+enum BlockStatusT  {
 	FREE = 0, // ready to be allocated
 	USED, // allocated
 	BAD,
 	UNKNOWN
-} BlockStatusT;
+};
 
 BlockStatusT blockStatus[NUM_CARDS][NUM_BUSES][CHIPS_PER_BUS][BLOCKS_PER_CHIP];
 uint16_t blockPE[NUM_CARDS][NUM_BUSES][CHIPS_PER_BUS][BLOCKS_PER_CHIP];

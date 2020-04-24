@@ -119,10 +119,17 @@ typedef Bit#(BlkInfoSelSz) BlkInfoSelT;
 // ***********
 // Module Design
 // ***********
+typedef enum {
+	AftlREAD = 0,
+	AftlWRITE,
+	AftlERASE,
+	AftlMARKBAD,
+	AftlINVALID
+} AftlCmdTypes deriving (Bits, Eq, FShow);
 
 typedef struct {
 	TagT tag;
-	FlashOp op;
+	AftlCmdTypes cmd;
 	LPA lpa;
 } FTLCmd deriving (Bits, Eq);
 
@@ -152,6 +159,7 @@ typedef struct {
 module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	FIFO#(FTLCmd) reqQ <- mkSizedFIFO(cmdQDepth);
 	FIFO#(MultiFlashCmd) respQ <- mkFIFO;
+	FIFO#(MultiFlashCmd) respQ_pre <- mkFIFO;
 	FIFO#(FTLCmd) resp_errorQ <- mkFIFO;
 
 	// ** Mapping Table **
@@ -179,7 +187,9 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	FIFOF#(LPA_MultiFlashCmd) procQ_W <- mkFIFOF;
 	FIFOF#(LPA_MultiFlashCmd) procQ_W_trig <- mkFIFOF;
 	FIFOF#(LPA_MultiFlashCmd) procQ_E <- mkFIFOF;
-	Vector#(6,FIFOF#(Tuple2#(Bit#(1), LPA_MultiFlashCmd))) procUpdateQs <- replicateM(mkFIFOF);
+	FIFOF#(LPA_MultiFlashCmd) procQ_MB <- mkFIFOF;
+
+	Vector#(6,FIFOF#(Tuple2#(Bit#(2), LPA_MultiFlashCmd))) procUpdateQs <- replicateM(mkFIFOF);
 
 
 	Reg#(Bool) inProgress <- mkReg(False);
@@ -189,13 +199,18 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		cnt <= cnt+1;
 	endrule
 
+	rule routeRespQ;
+		let d <- toGet(respQ_pre).get;
+		respQ.enq(d);
+	endrule
+
 	rule requestMapping ( inProgress == False );
 		if(verbose) $display("[%d] requestMapping", cnt);
 
 		let ftlCmd <- toGet(reqQ).get;
 
-		case(ftlCmd.op)
-			WRITE_PAGE, READ_PAGE, ERASE_BLOCK: begin
+		case(ftlCmd.cmd)
+			AftlWRITE, AftlREAD, AftlERASE, AftlMARKBAD: begin
 				procQ.enq( ftlCmd );
 				let addr = { getSegmentT(ftlCmd.lpa), getVirtBlkT(ftlCmd.lpa) };
 				inProgress <= True;
@@ -217,9 +232,16 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		let mapEntry <- blockmap.portA.response.get;
 		let lpa = procQ.first.lpa;
 
+		FlashOp op = INVALID;
+		case (procQ.first.cmd)
+			AftlWRITE: op = WRITE_PAGE;
+			AftlREAD:  op = READ_PAGE;
+			AftlERASE: op = ERASE_BLOCK;
+		endcase
+
 		let oneFlashCmd = FlashCmd {
 			tag: procQ.first.tag,
-			op: procQ.first.op,
+			op: op,
 			bus: truncate( lpa >> valueOf(TLog#(NUM_CARDS)) ),
 			chip: truncate( {getSegmentT(lpa), getVirtBlkT(lpa)} >> valueOf(TLog#(TMul#(NUM_BUSES, NUM_CARDS))) ),
 			block: zeroExtend( mapEntry.block ),
@@ -234,19 +256,21 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		procQ.deq;
 		case (mapEntry.status)
 			ALLOCATED: begin
-				case (procQ.first.op)
-					READ_PAGE:   procQ_R.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
-					WRITE_PAGE:  procQ_W.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
-					ERASE_BLOCK: procQ_E.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+				case (procQ.first.cmd)
+					AftlREAD:   procQ_R.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					AftlWRITE:  procQ_W.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					AftlERASE: procQ_E.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					AftlMARKBAD: procQ_MB.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
 				endcase
 			end
 
 			NOT_ALLOCATED: begin
-				case (procQ.first.op)
-					READ_PAGE, ERASE_BLOCK: begin
+				case (procQ.first.cmd)
+					AftlREAD, AftlERASE: begin
 						resp_errorQ.enq(procQ.first);
 					end
-					WRITE_PAGE: procQ_W_trig.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					AftlWRITE: procQ_W_trig.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					AftlMARKBAD: procQ_MB.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
 				endcase
 			end
 
@@ -261,28 +285,35 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		respQ.enq(procQ_R.first.cmd);
 	endrule
 
+	(* descending_urgency = "routeRespQ, procAftlRead, procAftlWriteAllocated" *)
 	rule procAftlWriteAllocated (inProgress);
 		procQ_W.deq;
 		respQ.enq(procQ_W.first.cmd);
 	endrule
 
-	(* descending_urgency = "procAftlErase, procAftlWriteNotAllocated" *) // urgency for procUpdateQs[0]
+	(* descending_urgency = "procAftlMarkBadBlock, procAftlErase, procAftlWriteNotAllocated" *) // urgency for procUpdateQs[0]
+
+	rule procAftlMarkBadBlock (inProgress);
+		procQ_MB.deq;
+		procUpdateQs[0].enq(tuple2(0, procQ_MB.first));
+	endrule
+
 	rule procAftlErase (inProgress);
 		procQ_E.deq;
 
 		let cmd = procQ_E.first.cmd;
 		cmd.fcmd.page = 0;
 
-		procUpdateQs[0].enq(tuple2(0, LPA_MultiFlashCmd{lpa: procQ_E.first.lpa, cmd: cmd}));
+		procUpdateQs[0].enq(tuple2(1, LPA_MultiFlashCmd{lpa: procQ_E.first.lpa, cmd: cmd}));
 	endrule
 
 	rule procAftlWriteNotAllocated (inProgress);
 		procQ_W_trig.deq;
 
-		procUpdateQs[0].enq(tuple2(1, procQ_W_trig.first));
+		procUpdateQs[0].enq(tuple2(2, procQ_W_trig.first));
 	endrule
 
-	let isQ0Erase = (tpl_1(procUpdateQs[0].first) == 0);
+	let isQ0Erase = (tpl_1(procUpdateQs[0].first) <= 1);
 
 	Reg#(Bit#(TAdd#(1, TSub#(BlockTSz, BlkInfoSelSz)))) blkScanReqCnt <- mkReg(0);
 	Reg#(Bit#(TAdd#(1, TSub#(BlockTSz, BlkInfoSelSz)))) blkScanRespCnt <- mkReg(0);
@@ -436,7 +467,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 				let fcmd = tpl_2(procUpdateQs[2].first).cmd.fcmd;
 
 				FTLCmd resp_err
-					= FTLCmd{ tag: fcmd.tag, op: WRITE_PAGE, lpa: tpl_2(procUpdateQs[2].first).lpa };
+					= FTLCmd{ tag: fcmd.tag, cmd: AftlWRITE, lpa: tpl_2(procUpdateQs[2].first).lpa };
 
 				resp_errorQ.enq(resp_err);
 			end
@@ -449,10 +480,10 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		end
 	endrule
 
-	let isQ3Erase = (tpl_1(procUpdateQs[3].first) == 0);
+	let isQ3Erase = (tpl_1(procUpdateQs[3].first) <= 1);
 	// WRITE & ERASE
 	// Update BlkInfo - first read the line
-	rule updateBlkInfo3 (inProgress && procUpdateQs[3].notEmpty && blkScanIssued == True);
+	rule updateBlkInfo3 (inProgress && blkScanIssued == True);
 		if(verbose) $display("[%d] updateBlkInfo3", cnt);
 		let curCmd = tpl_2(procUpdateQs[3].first).cmd;
 		let curLPA = tpl_2(procUpdateQs[3].first).lpa;
@@ -460,7 +491,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		if(!isQ3Erase) curCmd.fcmd.block = zeroExtend(tpl_1(minPeEntryQ.first));
 
 		procUpdateQs[3].deq;
-		procUpdateQs[4].enq(tuple2( isQ3Erase?0:1, LPA_MultiFlashCmd{lpa: curLPA, cmd: curCmd} ));
+		procUpdateQs[4].enq(tuple2(tpl_1(procUpdateQs[3].first), LPA_MultiFlashCmd{lpa: curLPA, cmd: curCmd} ));
 
 		BusT bus = curCmd.fcmd.bus;
 		ChipT chip = curCmd.fcmd.chip;
@@ -480,13 +511,18 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		return BlkInfoEntry{status: FREE_BLK, erase: entry.erase+1};
 	endfunction
 
+	function BlkInfoEntry markBadEntry( BlkInfoEntry entry );
+		return BlkInfoEntry{status: BAD_BLK, erase: entry.erase};
+	endfunction
+
 	function BlkInfoEntry muxBlkInfoEntry( Bit#(1) sel, BlkInfoEntry a0, BlkInfoEntry a1 );
 		return sel==0?a0:a1;
 	endfunction
 
-	let isQ4Erase = (tpl_1(procUpdateQs[4].first) == 0);
+	let typeQ4 = tpl_1(procUpdateQs[4].first);
 
-	rule updateBlkInfo4 (inProgress && procUpdateQs[4].notEmpty && blkScanIssued == True);
+	(* descending_urgency = "updateBlkInfo4, updateBlkInfo3, updateBlkInfo1" *)
+	rule updateBlkInfo4 (inProgress && blkScanIssued == True);
 		if(verbose) $display("[%d] updateBlkInfo4", cnt);
 		let procCmd <- toGet(procUpdateQs[4]).get;
 		procUpdateQs[5].enq(procCmd);
@@ -505,8 +541,9 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)) addr =
 			truncate({curCmd.card, bus, chip, block} >> valueOf(BlkInfoSelSz));
 
-		if (isQ4Erase) begin
+		if (typeQ4 <= 1) begin
 			let blkinfo_vec_erased = map(eraseBlkInfoEntry, blkinfo_vec);
+			if (typeQ4 == 0) blkinfo_vec_erased = map(markBadEntry, blkinfo_vec);
 
 			Bit#(8) sel_vec = 1 << block_lower;
 
@@ -526,10 +563,11 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 
 	endrule
 
-	let isQ5Erase = (tpl_1(procUpdateQs[5].first) == 0);
+	let typeQ5 = tpl_1(procUpdateQs[5].first);
 
-	(* descending_urgency = "procAftlRead, procAftlWriteAllocated, updateBlkInfo5, updateBlkInfo4, updateBlkInfo3, updateBlkInfo1" *)
-	rule updateBlkInfo5 (inProgress && procUpdateQs[5].notEmpty && blkScanIssued == True);
+	FIFO#(Bit#(1)) markBadDoneQ <- mkFIFO;
+
+	rule updateBlkInfo5 (inProgress && blkScanIssued == True);
 		if(verbose) $display("[%d] updateBlkInfo5", cnt);
 		blkScanIssued <= False;
 
@@ -537,34 +575,42 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		let lpa = tpl_2(procUpdateQs[5].first).lpa;
 
 		procUpdateQs[5].deq;
-		respQ.enq(cmd);
 
 		let addr_blkmap = { getSegmentT(lpa), getVirtBlkT(lpa) };
-		MapEntry entry;
 
-		if(isQ5Erase) begin
-			entry = MapEntry{status: NOT_ALLOCATED, block: 0};
+		if(typeQ5 == 0) begin
+			markBadDoneQ.enq(?);
 		end
 		else begin
-			BlockT block = truncate(cmd.fcmd.block);
-			entry = MapEntry{status: ALLOCATED, block: zeroExtend(block)};
+			respQ_pre.enq(cmd);
 		end
+
+		BlockT block = truncate(cmd.fcmd.block);
+		let entry = MapEntry{status: (typeQ5<=1)?NOT_ALLOCATED:ALLOCATED, block: zeroExtend(block)};
 
 		blockmap.portA.request.put ( 
 			BRAMRequest{write: True, responseOnWrite: False, address: addr_blkmap, datain: entry}
 		);
 	endrule
 
+	Wire#(Bit#(1)) blockResp <- mkDWire(0);
+
+	rule drainMarkBadDone (inProgress);
+		markBadDoneQ.deq;
+		blockResp <= 1;
+		inProgress <= False;
+	endrule
+
 	interface translateReq = toPut(reqQ);
 	interface Get resp;
-		method ActionValue#(MultiFlashCmd) get if (inProgress);
+		method ActionValue#(MultiFlashCmd) get if (inProgress && blockResp == 0);
 			let d <- toGet(respQ).get;
 			inProgress <= False;
 			return d;
 		endmethod
 	endinterface
 	interface Get respError;
-		method ActionValue#(FTLCmd) get if (inProgress);
+		method ActionValue#(FTLCmd) get if (inProgress && blockResp == 0);
 			let d <- toGet(resp_errorQ).get;
 			inProgress <= False;
 			return d;

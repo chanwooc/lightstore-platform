@@ -85,6 +85,10 @@ int main(int argc, const char **argv)
    
 	device->readMapping(0);
 	device->readBlkInfo(0);
+	device->readMapping(1);
+	device->readBlkInfo(1);
+
+	myreq.cmd = AmfMARKBAD;
 
 	myreq.cmd = AmfWRITE;
 	for (unsigned int i = 0; i < 64; i++) {
@@ -95,6 +99,8 @@ int main(int argc, const char **argv)
 	sleep(1);
 	device->readMapping(0);
 	device->readBlkInfo(0);
+	device->readMapping(1);
+	device->readBlkInfo(1);
 
 	myreq.cmd = AmfERASE;
 	myreq.lpa = 0;
@@ -103,11 +109,39 @@ int main(int argc, const char **argv)
 	sleep(1);
 	device->readMapping(0);
 	device->readBlkInfo(0);
-//	myreq.cmd = AmfREAD;
-//	for (unsigned int i = 0; i < 128; i++) {
-//		myreq.lpa = i;
-//		device->makeReq(myreq);
-//	}
+	device->readMapping(1);
+	device->readBlkInfo(1);
+
+	sleep(1);
+
+	myreq.cmd = AmfMARKBAD;
+	myreq.lpa = 0;
+	device->makeReq(myreq);
+
+	sleep(1);
+
+	device->readMapping(0);
+	device->readBlkInfo(0);
+	device->readMapping(1);
+	device->readBlkInfo(1);
+
+	myreq.cmd = AmfMARKBAD;
+	myreq.lpa = 1;
+	device->makeReq(myreq);
+
+	sleep(1);
+
+	for (int i = 0; i < 128; i++) {
+		myreq.cmd = AmfMARKBAD;
+		myreq.lpa = i;
+		device->makeReq(myreq);
+	}
+
+	device->readMapping(0);
+	device->readBlkInfo(0);
+	device->readMapping(1);
+	device->readBlkInfo(1);
+
 	sleep(1);
 
 }

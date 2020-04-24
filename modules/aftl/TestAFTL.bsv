@@ -46,6 +46,8 @@ module mkTestAFTL(Empty);
 			BRAMRequest{ write: True, responseOnWrite: False, address: 2, datain: data}
 		);
 
+		aftl.translateReq.put(FTLCmd{tag: ?, cmd: AftlMARKBAD, lpa: truncate(lpa));
+
 		startReq <= True;
 	endrule
 
@@ -62,7 +64,7 @@ module mkTestAFTL(Empty);
 		req_cnt <= req_cnt+1;
 
 		if(verbose) $display("req1 sent lpa: %x", lpa);
-		aftl.translateReq.put(FTLCmd{tag: 0, op: WRITE_PAGE, lpa: truncate(lpa)});
+		aftl.translateReq.put(FTLCmd{tag: 0, cmd: AftlWRITE, lpa: truncate(lpa)});
 
 	endrule
 
@@ -79,7 +81,7 @@ module mkTestAFTL(Empty);
 		req_cnt2 <= req_cnt2+1;
 
 		if(verbose) $display("req2 sent lpa: %x", lpa);
-		aftl.translateReq.put(FTLCmd{tag: 0, op: READ_PAGE, lpa: truncate(lpa)});
+		aftl.translateReq.put(FTLCmd{tag: 0, cmd: AftlREAD, lpa: truncate(lpa)});
 	endrule
 
 	rule send_req3 (startReq && req_cnt == fromInteger(testMax) && req_cnt2 == fromInteger(testMax2) && req_cnt3 < fromInteger(testMax3));
@@ -95,7 +97,7 @@ module mkTestAFTL(Empty);
 		req_cnt3 <= req_cnt3+1;
 
 		if(verbose) $display("req3 sent lpa: %x", lpa);
-		aftl.translateReq.put(FTLCmd{tag: 0, op: ERASE_BLOCK, lpa: truncate(lpa)});
+		aftl.translateReq.put(FTLCmd{tag: 0, cmd: AftlERASE, lpa: truncate(lpa)});
 	endrule
 
 	rule send_req4 (startReq && req_cnt == fromInteger(testMax) && req_cnt2 == fromInteger(testMax2) && req_cnt3 == fromInteger(testMax3) && req_cnt4 < fromInteger(testMax4));
@@ -111,7 +113,7 @@ module mkTestAFTL(Empty);
 		req_cnt4 <= req_cnt4+1;
 
 		if(verbose) $display("req4 sent lpa: %x", lpa);
-		aftl.translateReq.put(FTLCmd{tag: 0, op: READ_PAGE, lpa: truncate(lpa)});
+		aftl.translateReq.put(FTLCmd{tag: 0, cmd: AftlREAD, lpa: truncate(lpa)});
 	endrule
 
 	Reg#(Bit#(32)) resp_cnt <- mkReg(0);
@@ -132,7 +134,7 @@ module mkTestAFTL(Empty);
 		resp_cnt_err <= resp_cnt_err + 1;
 		if(verbose) begin
 			$display("Error - lpa: %d", ans.lpa);
-			$display(fshow(ans.op));
+			$display(fshow(ans.cmd));
 		end
 	endrule
 

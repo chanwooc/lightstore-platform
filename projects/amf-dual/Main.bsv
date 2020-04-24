@@ -38,9 +38,10 @@ typedef 8 NUM_ENG_PORTS;
 
 // Custom types for SW-HW communication
 typedef enum {
-	AmfREAD,
+	AmfREAD = 0,
 	AmfWRITE,
 	AmfERASE,
+	AmfMARKBAD,
 	AmfINVALID
 } AmfCmdTypes deriving (Bits, Eq, FShow);
 
@@ -519,10 +520,12 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 	rule driveRespErr;
 		let r <- aftl.respError.get;
 		AmfCmdTypes cmd = AmfINVALID;
-		case (r.op)
-			READ_PAGE: cmd = AmfREAD;
-			WRITE_PAGE: cmd = AmfWRITE;
-			ERASE_BLOCK: cmd = AmfERASE;
+		case (r.cmd)
+			AftlREAD: cmd = AmfREAD;
+			AftlWRITE: cmd = AmfWRITE;
+			AftlERASE: cmd = AmfERASE;
+			AftlMARKBAD: cmd = AmfMARKBAD;
+			AftlINVALID: cmd = AmfINVALID;
 		endcase
 
 		indication.respAftlFailed(
@@ -571,20 +574,25 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 	interface AmfRequest request;
 		// method Action makeReq(AmfRequestT req, Bit#(32) offset);
 		method Action makeReq(AmfRequestT req);
-			FlashOp op = INVALID;
+			AftlCmdTypes cmd = AftlINVALID;
 			case (req.cmd)
 				AmfREAD: begin
-					op = READ_PAGE;
+					cmd = AftlREAD;
 					// dmaWriteOffset[req.tag] <= offset;
 				end
 				AmfWRITE: begin
-					op = WRITE_PAGE;
+					cmd = AftlWRITE;
 					// dmaReadOffset[req.tag] <= offset;
 				end
-				AmfERASE: op = ERASE_BLOCK;
+				AmfERASE: begin
+					cmd = AftlERASE;
+				end
+				AmfMARKBAD: begin
+					cmd = AftlMARKBAD;
+				end
 			endcase
 
-			aftl.translateReq.put( FTLCmd{ tag: req.tag, op: op, lpa: truncate(req.lpa) } ); // truncate due to BSIM
+			aftl.translateReq.put( FTLCmd{ tag: req.tag, cmd: cmd, lpa: truncate(req.lpa) } ); // truncate due to BSIM
 		endmethod
 
 		method Action eraseRawBlock(Bit#(1) card, Bit#(3) bus, Bit#(3) chip, Bit#(12) block, Bit#(7) tag);
