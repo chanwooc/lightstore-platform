@@ -12,7 +12,6 @@ webtalk*.jou
 vivado*.str
 build*.log
 
-tools
 .Xil
 
 bluesim*

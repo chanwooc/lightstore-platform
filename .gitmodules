@@ -1,0 +1,9 @@
+[submodule "tools/fpgamake"]
+	path = tools/fpgamake
+	url = git@github.com:chanwooc/fpgamake.git
+[submodule "tools/connectal"]
+	path = tools/connectal
+	url = git@github.com:chanwooc/connectal.git
+[submodule "tools/buildcache"]
+	path = tools/buildcache
+	url = git@github.com:cambridgehackers/buildcache.git
