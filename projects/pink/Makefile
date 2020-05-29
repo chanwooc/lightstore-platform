@@ -37,11 +37,11 @@ CONNECTALFLAGS += -D MMU_INDEX_WIDTH=11     # To support larger MMU table (porta
 BSVFILES = Main.bsv \
 	../../modules/keytable_merger/LightStoreKtMerger.bsv \
 	../../modules/keytable_searcher/LightStoreKtSearcher.bsv \
-	../../lib/LibDummy.bsv \
-	../../platform/aurora_intra/AuroraIntraZcu.bsv \
-	../../platform/flash_ctrl/common/FlashBusModel.bsv \
-	../../platform/flash_ctrl/model_zcu/FlashCtrlModel.bsv \
-	../../platform/flash_ctrl/hw_zcu/FlashCtrl.bsv
+
+BSVPATH += ../../lib \
+		   ../../platform/flash_ctrl/common \
+		   ../../platform/flash_ctrl/model_main \
+		   ../../platform/flash_ctrl/hw_main \
 
 CPPFILES=main.cpp
 
@@ -53,12 +53,14 @@ CONNECTALFLAGS += -D BSIM
 else
 NOHOST_XDC = ../../misc/nohost_zcu.xdc
 
+CONNECTALFLAGS += --bscflags " -D LED_AURORA"
 CONNECTALFLAGS += \
-	--verilog ../../platform/aurora_intra/xilinx/ \
+	--bsvpath ../../platform/aurora_intra/aurora_8b10b_zcu/ \
+	--verilog ../../platform/aurora_intra/aurora_8b10b_zcu/ \
 	--xci $(CONNECTALDIR)/out/$(BOARD)/aurora_8b10b_zcu/aurora_8b10b_zcu.xci \
-	--constraint ../../platform/aurora_intra/xilinx/aurora_8b10b_zcu_exdes.xdc \
+	--constraint ../../platform/aurora_intra/aurora_8b10b_zcu/aurora_8b10b_zcu_exdes.xdc \
 	--constraint $(NOHOST_XDC) \
-	--implconstraint ../../platform/aurora_intra/xilinx/aurora_8b10b_zcu_exdes.xdc \
+	--implconstraint ../../platform/aurora_intra/aurora_8b10b_zcu/aurora_8b10b_zcu_exdes.xdc \
 	--implconstraint $(NOHOST_XDC) 
 
 $(IPDIR)/$(BOARD)/aurora_8b10b_zcu/aurora_8b10b_zcu.xci: ../../coregen/synth-aurora-intra-zcu.tcl

@@ -116,6 +116,7 @@ endinterface
 
 module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indication)(MainIfc);
 	Clock init_clock = derivedClock;
+	Reset init_reset = derivedReset;
 
 	Reg#(Bool) started <- mkReg(False);
 	Reg#(Bit#(64)) cycleCnt <- mkReg(0);
@@ -136,9 +137,9 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//--------------------------------------------
 	GtClockImportIfc gt_clk_fmc1 <- mkGtClockImport;
 	`ifdef BSIM
-		FlashCtrlIfc flashCtrl <- mkFlashCtrlModel(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock);
+		FlashCtrlIfc flashCtrl <- mkFlashCtrlModel(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock, init_reset);
 	`else
-		FlashCtrlIfc flashCtrl <- mkFlashCtrlZcu(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock);
+		FlashCtrlIfc flashCtrl <- mkFlashCtrl(True, gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock, init_reset);
 	`endif
 
 	FlashSwitch#(4) flashSwitch <- mkFlashSwitch; // users[1] for normal IO & users[0,2] for kt-merging

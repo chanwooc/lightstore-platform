@@ -17,6 +17,7 @@ Bluespec compiler and Xilinx Vivado are required.
 
 After initializaing submodules, build the hardware image under `projects/pink`
 ```
-make -j8 build.zcu102
+make ip.zcu102
+make build.zcu102
 ```
 
