@@ -37,7 +37,7 @@ import FlashCtrlModel::*;
 import DualFlashTypes::*;
 
 typedef 8 CmdQDepthR; // 4 does not achieve full speed (848MB/s with 8/6, 833MB/s with 4)
-typedef 4 CmdQDepthW;
+typedef 8 CmdQDepthW; // 4 might be enough
 
 `ifdef RdEnginePerCard
 typedef `RdEnginePerCard RdEnginePerCard;
@@ -213,9 +213,9 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 		for (Integer b=0; b<valueOf(NUM_BUSES); b=b+1) begin
 
-			FIFO#(Tuple2#(Bit#(DataBusWidth), TagT)) dmaWriteBufOut <- mkSizedFIFO(dmaBurstBeats); // TODO: maybe just mkFIFO?
+			FIFO#(Tuple2#(Bit#(DataBusWidth), TagT)) dmaWriteBufOut <- mkFIFO;//mkSizedFIFO(dmaBurstBeats); // TODO: maybe just mkFIFO?
 			FIFO#(Tuple2#(TagT, Bit#(8))) dmaWriteReqQ <- mkFIFO;
-			FIFO#(Bool) dmaWrReq2RespQ <- mkSizedFIFO(valueOf(CmdQDepthW)); 
+			//FIFO#(Bool) dmaWrReq2RespQ <- mkSizedFIFO(valueOf(CmdQDepthW)); 
 
 			Reg#(Bit#(10)) dmaWrBeatsCnt <- mkReg(0);
 
@@ -275,24 +275,24 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 				let weS = getWEServer(we, c, b);
 				weS.request.put(dmaCmd);
-				dmaWrReq2RespQ.enq(last);
+				// dmaWrReq2RespQ.enq(last);
 				
 				// $display("[@%d] dma write req issued tag%d, card%d, bus%d, last%d, base=0x%x, offset=%d",
 				//				cycleCnt, tag, c, b, last?1:0, dmaWriteSgid, offset);
 			endrule
 
-			Reg#(Bit#(DmaBurstBeatsSz)) dmaWriteBeatCnt <- mkReg(0);
+			// Reg#(Bit#(DmaBurstBeatsSz)) dmaWriteBeatCnt <- mkReg(0);
 			rule sendDmaWriteData;
-				let last = dmaWrReq2RespQ.first;
+				// let last = dmaWrReq2RespQ.first;
 
-				Bit#(DmaBurstBeatsSz) thresh = (last)?0:fromInteger(dmaBurstBeats-1);
-				if (dmaWriteBeatCnt == thresh) begin
-					dmaWrReq2RespQ.deq;
-					dmaWriteBeatCnt <= 0;
-				end
-				else begin
-					dmaWriteBeatCnt <= dmaWriteBeatCnt + 1;
-				end
+				// Bit#(DmaBurstBeatsSz) thresh = (last)?0:fromInteger(dmaBurstBeats-1);
+				// if (dmaWriteBeatCnt == thresh) begin
+				// 	dmaWrReq2RespQ.deq;
+				// 	dmaWriteBeatCnt <= 0;
+				// end
+				// else begin
+				// 	dmaWriteBeatCnt <= dmaWriteBeatCnt + 1;
+				// end
 
 				let taggedRdata = dmaWriteBufOut.first;
 				dmaWriteBufOut.deq;
