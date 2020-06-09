@@ -13,7 +13,7 @@ import DefaultValue::*;
 import Vector::*;
 
 import ControllerTypes::*;
-import MyTypes::*;
+import DualFlashTypes::*;
 
 import Clocks::*;
 
@@ -46,7 +46,7 @@ module mkTestAFTL(Empty);
 			BRAMRequest{ write: True, responseOnWrite: False, address: 2, datain: data}
 		);
 
-		aftl.translateReq.put(FTLCmd{tag: ?, cmd: AftlMARKBAD, lpa: truncate(lpa));
+		aftl.translateReq.put(FTLCmd{tag: ?, cmd: AftlMARKBAD, lpa: truncate(lpa)});
 
 		startReq <= True;
 	endrule

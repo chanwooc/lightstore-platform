@@ -15,7 +15,7 @@ import DefaultValue::*;
 import Vector::*;
 
 import ControllerTypes::*;
-import MyTypes::*;
+import DualFlashTypes::*;
 
 import Clocks::*;
 
@@ -135,7 +135,7 @@ typedef struct {
 
 interface AFTLIfc;
 	interface Put#(FTLCmd) translateReq;
-	interface Get#(MultiFlashCmd) resp;
+	interface Get#(DualFlashCmd) resp;
 	interface Get#(FTLCmd) respError;
 
 	interface BRAMServer#(Bit#(TAdd#(SegmentTSz, VirtBlkTSz)), MapEntry) map_portB;
@@ -146,20 +146,32 @@ interface AFTLIfc;
 endinterface
 
 (* synthesize *)
+module mkAFTLBRAM128 (AFTLIfc);
+	let _m <- mkAFTL(True, 128);
+	return _m;
+endmodule
+
+(* synthesize *)
 module mkAFTL128 (AFTLIfc);
-	let _m <- mkAFTL(128);
+	let _m <- mkAFTL(False, 128);
 	return _m;
 endmodule
 
 typedef struct {
 	LPA lpa;
-	MultiFlashCmd cmd;
-} LPA_MultiFlashCmd deriving (Bits, Eq);
+	DualFlashCmd cmd;
+} LPA_DualFlashCmd deriving (Bits, Eq);
 
-module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
-	FIFO#(FTLCmd) reqQ <- mkSizedFIFO(cmdQDepth);
-	FIFO#(MultiFlashCmd) respQ <- mkFIFO;
-	FIFO#(MultiFlashCmd) respQ_pre <- mkFIFO;
+module mkAFTL#(Bool isReqBramQ, Integer cmdQDepth)(AFTLIfc);
+
+	FIFO#(FTLCmd) reqQ;
+	if (isReqBramQ)
+		reqQ <- mkSizedBRAMFIFO(cmdQDepth);
+	else
+		reqQ <- mkSizedFIFO(cmdQDepth);
+
+	FIFO#(DualFlashCmd) respQ <- mkFIFO;
+	FIFO#(DualFlashCmd) respQ_pre <- mkFIFO;
 	FIFO#(FTLCmd) resp_errorQ <- mkFIFO;
 
 	// ** Mapping Table **
@@ -183,13 +195,13 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 	// FIFOF#(FTLCmd) procQ <- mkFIFOF1; // Size == 1, Only 1 req in-flight
 
 	FIFOF#(FTLCmd) procQ <- mkFIFOF; 
-	FIFOF#(LPA_MultiFlashCmd) procQ_R <- mkFIFOF;
-	FIFOF#(LPA_MultiFlashCmd) procQ_W <- mkFIFOF;
-	FIFOF#(LPA_MultiFlashCmd) procQ_W_trig <- mkFIFOF;
-	FIFOF#(LPA_MultiFlashCmd) procQ_E <- mkFIFOF;
-	FIFOF#(LPA_MultiFlashCmd) procQ_MB <- mkFIFOF;
+	FIFOF#(LPA_DualFlashCmd) procQ_R <- mkFIFOF;
+	FIFOF#(LPA_DualFlashCmd) procQ_W <- mkFIFOF;
+	FIFOF#(LPA_DualFlashCmd) procQ_W_trig <- mkFIFOF;
+	FIFOF#(LPA_DualFlashCmd) procQ_E <- mkFIFOF;
+	FIFOF#(LPA_DualFlashCmd) procQ_MB <- mkFIFOF;
 
-	Vector#(6,FIFOF#(Tuple2#(Bit#(2), LPA_MultiFlashCmd))) procUpdateQs <- replicateM(mkFIFOF);
+	Vector#(6,FIFOF#(Tuple2#(Bit#(2), LPA_DualFlashCmd))) procUpdateQs <- replicateM(mkFIFOF);
 
 
 	Reg#(Bool) inProgress <- mkReg(False);
@@ -248,7 +260,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 			page: zeroExtend( getPageT(lpa) )
 		};
 
-		let multiFlashCmd = MultiFlashCmd{
+		let multiFlashCmd = DualFlashCmd{
 			card: lpa[0], // IF one card, could be wrong value but ignored
 			fcmd: oneFlashCmd
 		};
@@ -257,10 +269,10 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		case (mapEntry.status)
 			ALLOCATED: begin
 				case (procQ.first.cmd)
-					AftlREAD:   procQ_R.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
-					AftlWRITE:  procQ_W.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
-					AftlERASE: procQ_E.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
-					AftlMARKBAD: procQ_MB.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					AftlREAD:   procQ_R.enq(LPA_DualFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					AftlWRITE:  procQ_W.enq(LPA_DualFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					AftlERASE: procQ_E.enq(LPA_DualFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					AftlMARKBAD: procQ_MB.enq(LPA_DualFlashCmd{lpa: lpa, cmd: multiFlashCmd});
 				endcase
 			end
 
@@ -269,8 +281,8 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 					AftlREAD, AftlERASE: begin
 						resp_errorQ.enq(procQ.first);
 					end
-					AftlWRITE: procQ_W_trig.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
-					AftlMARKBAD: procQ_MB.enq(LPA_MultiFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					AftlWRITE: procQ_W_trig.enq(LPA_DualFlashCmd{lpa: lpa, cmd: multiFlashCmd});
+					AftlMARKBAD: procQ_MB.enq(LPA_DualFlashCmd{lpa: lpa, cmd: multiFlashCmd});
 				endcase
 			end
 
@@ -304,7 +316,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		let cmd = procQ_E.first.cmd;
 		cmd.fcmd.page = 0;
 
-		procUpdateQs[0].enq(tuple2(1, LPA_MultiFlashCmd{lpa: procQ_E.first.lpa, cmd: cmd}));
+		procUpdateQs[0].enq(tuple2(1, LPA_DualFlashCmd{lpa: procQ_E.first.lpa, cmd: cmd}));
 	endrule
 
 	rule procAftlWriteNotAllocated (inProgress);
@@ -491,7 +503,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 		if(!isQ3Erase) curCmd.fcmd.block = zeroExtend(tpl_1(minPeEntryQ.first));
 
 		procUpdateQs[3].deq;
-		procUpdateQs[4].enq(tuple2(tpl_1(procUpdateQs[3].first), LPA_MultiFlashCmd{lpa: curLPA, cmd: curCmd} ));
+		procUpdateQs[4].enq(tuple2(tpl_1(procUpdateQs[3].first), LPA_DualFlashCmd{lpa: curLPA, cmd: curCmd} ));
 
 		BusT bus = curCmd.fcmd.bus;
 		ChipT chip = curCmd.fcmd.chip;
@@ -603,7 +615,7 @@ module mkAFTL#(Integer cmdQDepth)(AFTLIfc);
 
 	interface translateReq = toPut(reqQ);
 	interface Get resp;
-		method ActionValue#(MultiFlashCmd) get if (inProgress && blockResp == 0);
+		method ActionValue#(DualFlashCmd) get if (inProgress && blockResp == 0);
 			let d <- toGet(respQ).get;
 			inProgress <= False;
 			return d;
