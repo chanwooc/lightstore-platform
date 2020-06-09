@@ -21,10 +21,10 @@
 #include "FlashRequest.h"
 
 // Test Definitions
-// #define TEST_ERASE_ALL		 // eraseAll.exe's only test
-// #define MINI_TEST_SUITE
-#define TEST_READ_SPEED
-// #define TEST_WRITE_SPEED
+//#define TEST_ERASE_ALL		 // eraseAll.exe's only test
+#define MINI_TEST_SUITE
+//#define TEST_WRITE_SPEED
+// #define TEST_READ_SPEED
 // #define KT_WRITE
 // #define KT_READ
 
@@ -41,7 +41,8 @@
 #define PAGES_PER_BLOCK 16
 #define BLOCKS_PER_CHIP 128
 #define CHIPS_PER_BUS 8
-#define NUM_BUSES 2 // NAND_SIM (ControllerTypes.bsv)
+#define NUM_BUSES 8 // 2 if NAND_SIM set (ControllerTypes.bsv)
+#define NUM_CARDS 2
 
 #else
 // MLC
@@ -49,20 +50,21 @@
 #define BLOCKS_PER_CHIP 4096
 #define CHIPS_PER_BUS 8
 #define NUM_BUSES 8
+#define NUM_CARDS 2
 
 #endif
 
 // Page Size (Physical chip support up to 8224 bytes, but using 8192 bytes for now)
-//#define FPAGE_SIZE (8192*2)
-//#define FPAGE_SIZE_VALID (8224)
 #define FPAGE_SIZE (8192*2)
 #define FPAGE_SIZE_VALID (8192)
+//#define FPAGE_SIZE_VALID (8224)
 #define NUM_TAGS 128
 
 typedef enum {
 	UNINIT,
 	ERASED,
-	WRITTEN
+	WRITTEN,
+	BAD
 } FlashStatusT;
 
 typedef struct {
@@ -143,12 +145,15 @@ bool checkReadData(int tag) {
 		else if (readBuffers[tag][0]==0) {
 			fprintf(stderr, "LOG: Warning: potential bad block, read erased data 0\n");
 			fprintf(stderr, "LOG: tag=%d, C%d %d %d %d %d, Expected: %x, read: %x\n", tag, e.card, e.bus, e.chip, e.block, e.page, -1, readBuffers[tag][0]);
-			pass = false;
+			flashStatus[e.card][e.bus][e.chip][e.block]=BAD;
 		}
 		else {
 			fprintf(stderr, "LOG: **ERROR: read data mismatch! Expected: ERASED, read: %x\n", readBuffers[tag][0]);
 			pass = false;
 		}
+	}
+	else if (flashStatus[e.card][e.bus][e.chip][e.block]==BAD) {
+		//skip
 	}
 	else {
 		fprintf(stderr, "LOG: **ERROR: flash block state unknown. Did you erase before write?\n");
@@ -327,11 +332,11 @@ void eraseBlock(uint32_t card, uint32_t bus, uint32_t chip, uint32_t block, uint
 void writePage(uint32_t card, uint32_t bus, uint32_t chip, uint32_t block, uint32_t page, uint32_t tag) {
 	pthread_mutex_lock(&flashReqMutex);
 	curWritesInFlight ++;
-	flashStatus[card][bus][chip][block] = WRITTEN;
+	if(flashStatus[card][bus][chip][block] == ERASED) flashStatus[card][bus][chip][block] = WRITTEN;
 	pthread_mutex_unlock(&flashReqMutex);
 
 	if ( verbose_req ) fprintf(stderr, "LOG: sending write page request with tag=%d %d@%d %d %d %d\n", tag, card, bus, chip, block, page );
-	device->writePage(card, bus,chip,block,page,tag,tag*FPAGE_SIZE);
+	device->writePage(card, bus,chip,block,page,tag);
 }
 
 void readPage(uint32_t card, uint32_t bus, uint32_t chip, uint32_t block, uint32_t page, uint32_t tag, bool checkRead=false) {
@@ -346,7 +351,7 @@ void readPage(uint32_t card, uint32_t bus, uint32_t chip, uint32_t block, uint32
 	pthread_mutex_unlock(&flashReqMutex);
 
 	if ( verbose_req ) fprintf(stderr, "LOG: sending read page request with tag=%d %d@%d %d %d %d\n", tag, card, bus, chip, block, page );
-	device->readPage(card, bus,chip,block,page,tag,tag*FPAGE_SIZE);
+	device->readPage(card, bus,chip,block,page,tag);
 }
 
 // Use all BUSES & CHIPS in the device
@@ -403,7 +408,7 @@ void testRead(FlashRequestProxy* device, int blkStart, int blkCnt, int pageStart
 			for (int blk = blkStart; blk < blkEnd; blk++){
 				for (int chip = 0; chip < CHIPS_PER_BUS; chip++){
 					for (int bus = 0; bus < NUM_BUSES; bus++){
-						for (int card = 0; card < 2; card++) {
+						for (int card = 0; card < NUM_CARDS; card++) {
 							readPage(card, bus, chip, blk, page, waitIdleReadBuffer(), checkRead);
 						}
 					}
@@ -445,7 +450,7 @@ void testWrite(FlashRequestProxy* device, int blkStart, int blkCnt, int pageStar
 		for (int blk = blkStart; blk < blkEnd; blk++){
 			for (int chip = 0; chip < CHIPS_PER_BUS; chip++){
 				for (int bus = 0; bus < NUM_BUSES; bus++){
-					for (int card = 0; card < 2; card++) {
+					for (int card = 0; card < NUM_CARDS; card++) {
 						int freeTag = waitIdleWriteBuffer();
 						if (genData) {
 							for (unsigned int w=0; w<FPAGE_SIZE/sizeof(unsigned int); w++) {
@@ -582,16 +587,23 @@ int main(int argc, const char **argv)
 		verbose_req = true;
 		verbose_resp = true;
 
+		//srand(time(NULL));
+		//int blkStart = rand()%(BLOCKS_PER_CHIP);
+		int blkStart = 0;
 #if defined(SIMULATION)
-		int blkStart = 0;
-		int blkCnt = 4;
+		blkStart = (blkStart>=BLOCKS_PER_CHIP-5)?BLOCKS_PER_CHIP-5:blkStart;
+		fprintf(stderr, "[TEST MINI] rand block start: %d\n", blkStart);
+
+		int blkCnt = 2;
 		int pageStart = 0;
-		int pageCnt = 2;
+		int pageCnt = 1;
 #else
-		int blkStart = 0;
-		int blkCnt = 32; //BLOCKS_PER_CHIP;
+		blkStart = (blkStart>=BLOCKS_PER_CHIP-33)?BLOCKS_PER_CHIP-33:blkStart;
+		fprintf(stderr, "[TEST MINI] rand block start: %d\n", blkStart);
+
+		int blkCnt = 32;
 		int pageStart = 0;
-		int pageCnt = 4; //PAGES_PER_BLOCK;
+		int pageCnt = 4;
 #endif
 
 		fprintf(stderr, "[TEST] ERASE RANGED BLOCKS (Start: %d, Cnt: %d) STARTED!\n", blkStart, blkCnt); 
@@ -612,41 +624,26 @@ int main(int argc, const char **argv)
 	}
 #endif
 
-#if defined(TEST_READ_SPEED)
-	{
-		// Read speed test: No printf / No data generation / No data integrity check
-		verbose_req = false;
-		verbose_resp = false;
-
-		int repeat = 4;
-		int blkStart = 0;
-		int blkCnt = 128;
-		int pageStart = 0;
-		int pageCnt = 16;
-
-		timespec start, now;
-		clock_gettime(CLOCK_REALTIME, &start);
-
-		fprintf(stderr, "[TEST] READ SPEED (Repeat: %d, BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", repeat, blkStart, blkCnt, pageStart, pageCnt); 
-		testRead(device, blkStart, blkCnt, pageStart, pageCnt, false /* checkRead */, repeat);
-
-		fprintf(stderr, "[TEST] READ SPEED DONE!\n" ); 
-
-		clock_gettime(CLOCK_REALTIME, & now);
-		fprintf(stderr, "SPEED: %f MB/s\n", (2*repeat*8192.0*NUM_BUSES*CHIPS_PER_BUS*blkCnt*pageCnt/1000000)/timespec_diff_sec(start,now));
-	}
-#endif
-
 #if defined(TEST_WRITE_SPEED)
 	{
 		// Read speed test: No printf / No data generation / No data integrity check
 		verbose_req = false;
 		verbose_resp = false;
 
-		int blkStart = 3001;
-		int blkCnt = 30;
+#if defined(SIMULATION)
+		int blkStart = 0;
+		int blkCnt = 2;
 		int pageStart = 0;
-		int pageCnt = 64;
+		int pageCnt = 1;
+#else
+		srand(time(NULL));
+		int blkStart = rand()%(BLOCKS_PER_CHIP-32);
+		fprintf(stderr, "[Write Speed] block start: %d\n", blkStart);
+
+		int blkCnt = 32;
+		int pageStart = 0;
+		int pageCnt = 32;
+#endif
 
 		timespec start, now;
 		clock_gettime(CLOCK_REALTIME, &start);
@@ -654,15 +651,52 @@ int main(int argc, const char **argv)
 		fprintf(stderr, "[TEST] Erase before write test (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", blkStart, blkCnt, pageStart, pageCnt); 
 		testErase(device, blkStart, blkCnt);
 
-		fprintf(stderr, "[TEST] WRITE SPEED (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", blkStart, blkCnt, pageStart, pageCnt); 
+		fprintf(stderr, "[TEST] WRITE SPEED #Card: %d (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", NUM_CARDS, blkStart, blkCnt, pageStart, pageCnt); 
 		testWrite(device, blkStart, blkCnt, pageStart, pageCnt, false);
 
 		fprintf(stderr, "[TEST] WRITE SPEED DONE!\n" ); 
 
 		clock_gettime(CLOCK_REALTIME, & now);
-		fprintf(stderr, "SPEED: %f MB/s\n", (2*8192.0*NUM_BUSES*CHIPS_PER_BUS*blkCnt*pageCnt/1000000)/timespec_diff_sec(start,now));
+		fprintf(stderr, "SPEED: %f MB/s\n", (NUM_CARDS*8192.0*NUM_BUSES*CHIPS_PER_BUS*blkCnt*pageCnt/1000000)/timespec_diff_sec(start,now));
 	}
 #endif
+
+#if defined(TEST_READ_SPEED)
+	{
+		// Read speed test: No printf / No data generation / No data integrity check
+		verbose_req = false;
+		verbose_resp = false;
+
+#if defined(SIMULATION)
+		int repeat = 1;
+		int blkStart = 0;
+		int blkCnt = 2;
+		int pageStart = 0;
+		int pageCnt = 1;
+#else
+		srand(time(NULL));
+		int blkStart = rand()%(BLOCKS_PER_CHIP-128);
+		fprintf(stderr, "[Read Speed] block start: %d\n", blkStart);
+
+		int repeat = 4;
+		int blkCnt = 128;
+		int pageStart = 0;
+		int pageCnt = 32;
+#endif
+
+		timespec start, now;
+		clock_gettime(CLOCK_REALTIME, &start);
+
+		fprintf(stderr, "[TEST] READ SPEED #Card: %d (Repeat: %d, BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", NUM_CARDS, repeat, blkStart, blkCnt, pageStart, pageCnt); 
+		testRead(device, blkStart, blkCnt, pageStart, pageCnt, false /* checkRead */, repeat);
+
+		fprintf(stderr, "[TEST] READ SPEED DONE!\n" ); 
+
+		clock_gettime(CLOCK_REALTIME, & now);
+		fprintf(stderr, "SPEED: %f MB/s\n", (NUM_CARDS*repeat*8192.0*NUM_BUSES*CHIPS_PER_BUS*blkCnt*pageCnt/1000000)/timespec_diff_sec(start,now));
+	}
+#endif
+
 
 #if defined(KT_WRITE)
 	{

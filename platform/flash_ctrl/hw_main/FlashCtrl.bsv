@@ -1,3 +1,5 @@
+`include "ConnectalProjectConfig.bsv"
+
 import FIFOF::*;
 import FIFO::*;
 import BRAMFIFO::*;
@@ -13,7 +15,7 @@ import Pipe::*;
 import AuroraGearbox::*;
 import AuroraCommon::*;
 import AuroraIntraFmc1::*;
-`ifdef FLASH_FMC2
+`ifdef TWO_FLASH_CARDS
 import AuroraIntraFmc2::*;
 `endif
 import ControllerTypes::*;
@@ -46,18 +48,30 @@ interface FlashCtrlIfc;
 	interface FCDebug debug;
 endinterface
 
+(* synthesize *)
+module mkFlashCtrl0#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110)(FlashCtrlIfc);
+	let _m <- mkFlashCtrl(True, gt_clk_p, gt_clk_n, clk110, rst110); 
+	return _m;
+endmodule
 
-module mkFlashCtrl#(Bool isFMC1,
-	Clock gtx_clk_p, Clock gtx_clk_n, Clock clk110, Reset rst110) (FlashCtrlIfc);
+(* synthesize *)
+module mkFlashCtrl1#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110)(FlashCtrlIfc);
+	let _m <- mkFlashCtrl(False, gt_clk_p, gt_clk_n, clk110, rst110); 
+	return _m;
+endmodule
+
+module mkFlashCtrl#(Bool isFirstSlot,
+	Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110) (FlashCtrlIfc);
 
 	AuroraIfc auroraIntra;
-	`ifdef FLASH_FMC2
-		if (isFMC1)
-			auroraIntra <- mkAuroraIntra1(gtx_clk_p, gtx_clk_n, clk110, rst110);
+	`ifdef TWO_FLASH_CARDS
+		if (isFirstSlot)
+			auroraIntra <- mkAuroraIntra1(gt_clk_p, gt_clk_n, clk110, rst110);
 		else
-			auroraIntra <- mkAuroraIntra2(gtx_clk_p, gtx_clk_n, clk110, rst110);
+			auroraIntra <- mkAuroraIntra2(gt_clk_p, gt_clk_n, clk110, rst110);
 	`else
-		auroraIntra <- mkAuroraIntra1(gtx_clk_p, gtx_clk_n, clk110, rst110);
+		if (!isFirstSlot) error("Turn on TWO_FLASH_CARDS to use the second slot");
+		auroraIntra <- mkAuroraIntra1(gt_clk_p, gt_clk_n, clk110, rst110);
 	`endif
 
 	FIFO#(FlashCmd) flashCmdQ <- mkSizedFIFO(16); //should not have back pressure
