@@ -3,16 +3,19 @@
 import FIFOF::*;
 import FIFO::*;
 import RegFile::*;
-import FIFOLevel::*;
-import BRAMFIFO::*;
+import SpecialFIFOs::*;
+
 import BRAM::*;
+import BRAMFIFO::*;
+
 import GetPut::*;
 import ClientServer::*;
 import Connectable::*;
+import DefaultValue::*;
 
 import Vector::*;
-import List::*;
 import BuildVector::*;
+import List::*;
 
 import ConnectalMemory::*;
 import ConnectalConfig::*;
@@ -34,6 +37,7 @@ import ControllerTypes::*;
 import FlashCtrl::*;
 import FlashCtrlModel::*;
 
+import Top_Pins::*;
 import DualFlashTypes::*;
 
 typedef 8 CmdQDepthR; // 4 does not achieve full speed (848MB/s with 8/6, 833MB/s with 4)
@@ -81,7 +85,7 @@ Integer dmaBurstsPer8192Page = (pageSize8192+dmaBurstBytes-1)/dmaBurstBytes; // 
 // Integer dmaBurstsPerUserPage = (pageSizeUser+dmaBurstBytes-1)/dmaBurstBytes; // 65 128B-bursts per 8224B page
 // Integer dmaBurstBeatsLast = (pageSizeUser%dmaBurstBytes)/dmaBurstBytes; //num bursts in last dma; 2(1) bursts
 
-// SW uses only 8192 bytes
+// User Page Size: 8224, but we use 8192
 Integer wordsPerFlashPage = pageSizeUser/wordBytes; // 8224/16 = 514
 Integer wordsPer8192Page  = pageSize8192/wordBytes; // 8192/16 = 512
 
@@ -92,6 +96,7 @@ Integer realBurstsPerPage = pageSize8192/dmaBurstBytes; // 64
 
 Integer padDmaExtra = busWidthBytes; // Send extra 32B instead of indication
 
+// For DMA purpose, each tag represents 16-KB
 Integer dmaAllocPageSizeLog = 14; //typically portal alloc page size is 16KB; MUST MATCH SW
 
 interface MainIfc;
@@ -124,8 +129,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//--------------------------------------------
 	// Flash Controller
 	//--------------------------------------------
-	Vector#(2, GtClockImportIfc) gt_clk_fmcs <- replicateM(mkGtClockImport);
-	Vector#(2, FlashCtrlIfc) flashCtrls;
+	Vector#(NUM_CARDS, GtClockImportIfc) gt_clk_fmcs <- replicateM(mkGtClockImport);
+	Vector#(NUM_CARDS, FlashCtrlIfc) flashCtrls;
 	`ifdef BSIM
 		flashCtrls[0] <- mkFlashCtrlModel(gt_clk_fmcs[0].gt_clk_p_ifc, gt_clk_fmcs[0].gt_clk_n_ifc, init_clock, init_reset);
 		`ifdef TWO_FLASH_CARDS
@@ -171,8 +176,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 		//				cycleCnt, cmd.tag, flashCmdQ.first.card, cmd.bus, cmd.chip, cmd.block, cmd.page);
 	endrule
 
-	Vector#(2, Reg#(Bit#(32))) debugReadCnt <- replicateM(mkReg(0));
-	Vector#(2, Reg#(Bit#(32))) debugWriteCnt <- replicateM(mkReg(0));
+	Vector#(NUM_CARDS, Reg#(Bit#(32))) debugReadCnt <- replicateM(mkReg(0));
+	Vector#(NUM_CARDS, Reg#(Bit#(32))) debugWriteCnt <- replicateM(mkReg(0));
 
 
 	//--------------------------------------------
@@ -445,7 +450,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//--------------------------------------------
 
 	//Handle acks from controller
-	Vector#(2, FIFOF#(Tuple2#(TagT, StatusT))) ackQ <- replicateM(mkFIFOF);
+	Vector#(NUM_CARDS, FIFOF#(Tuple2#(TagT, StatusT))) ackQ <- replicateM(mkFIFOF);
 	for (Integer c=0; c<valueOf(NUM_CARDS); c=c+1) begin
 		rule handleControllerAck;
 			let ackStatus <- flashCtrls[c].user.ackStatus();
@@ -471,7 +476,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//--------------------------------------------
 	// Debug
 	//--------------------------------------------
-	Vector#(2, FIFO#(Bit#(1))) debugReqQ <- replicateM(mkFIFO);
+	Vector#(NUM_CARDS, FIFO#(Bit#(1))) debugReqQ <- replicateM(mkFIFO);
 
 	for (Integer c=0; c<valueOf(NUM_CARDS); c=c+1) begin
 		rule doDebugDump;

@@ -9,7 +9,7 @@ MEM_WRITE_INTERFACES=lMain.dmaWriteClient
 
 # Pin declaration
 PIN_TYPE=Top_Pins
-PIN_TYPE_INCLUDE=DualFlashTypes
+PIN_TYPE_INCLUDE=Top_Pins
 AUTOTOP=--interface pins:Main.pins
 
 BSVFILES = Main.bsv
@@ -24,7 +24,7 @@ BSVPATH += ../../lib \
 
 #CONNECTALFLAGS += -D DataBusWidth=256 -D IMPORT_HOSTIF -D XILINX_SYS_CLK -D USE_WIDE_WIDTH
 CONNECTALFLAGS += -D DataBusWidth=256 -D IMPORT_HOST_CLOCKS -D USE_WIDE_WIDTH
-CONNECTALFLAGS += -D TWO_FLASH_CARDS # --bscflags " -D TWO_FLASH_CARDS " # two flash cards
+CONNECTALFLAGS += -D TWO_FLASH_CARDS --bscflags " -D TWO_FLASH_CARDS " # two flash cards
 CONNECTALFLAGS += -D DMA_WRITE_PIPELINED # Makes more sense as long as we generate reqs only if burst data is ready
 
 ip.%:
