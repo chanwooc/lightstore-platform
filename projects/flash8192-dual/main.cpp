@@ -23,8 +23,8 @@
 // Test Definitions
 //#define TEST_ERASE_ALL		 // eraseAll.exe's only test
 #define MINI_TEST_SUITE
-//#define TEST_WRITE_SPEED
-// #define TEST_READ_SPEED
+#define TEST_WRITE_SPEED
+#define TEST_READ_SPEED
 // #define KT_WRITE
 // #define KT_READ
 
@@ -640,9 +640,9 @@ int main(int argc, const char **argv)
 		int blkStart = rand()%(BLOCKS_PER_CHIP-32);
 		fprintf(stderr, "[Write Speed] block start: %d\n", blkStart);
 
-		int blkCnt = 32;
+		int blkCnt = 16;
 		int pageStart = 0;
-		int pageCnt = 32;
+		int pageCnt = 256;
 #endif
 
 		timespec start, now;
@@ -678,10 +678,10 @@ int main(int argc, const char **argv)
 		int blkStart = rand()%(BLOCKS_PER_CHIP-128);
 		fprintf(stderr, "[Read Speed] block start: %d\n", blkStart);
 
-		int repeat = 4;
-		int blkCnt = 128;
+		int repeat = 2;
+		int blkCnt = 16;
 		int pageStart = 0;
-		int pageCnt = 32;
+		int pageCnt = 256;
 #endif
 
 		timespec start, now;

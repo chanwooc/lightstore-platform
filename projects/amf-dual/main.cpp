@@ -22,8 +22,8 @@
 
 // Test Definitions
 // #define TEST_AMF_ERASEALL
-// #define TEST_AMF_MAPPING1
-#define TEST_AMF_MAPPING2
+#define TEST_AMF_MAPPING1
+// #define TEST_AMF_MAPPING2
 
 // #define TEST_AMF
 // #define TEST_ERASE_ALL		 // eraseAll.exe's only test
@@ -765,7 +765,7 @@ void testWrite2(AmfRequestProxy* device, int lpaStart, int lpaCnt, bool genData=
 		else {
 			elapsed--;
 		}
-		if ( getNumReadsInFlight() == 0 ) break;
+		if ( getNumWritesInFlight() == 0 ) break;
 	}
 }
 
@@ -1044,44 +1044,48 @@ int main(int argc, const char **argv)
 		timespec start, now;
 
 		clock_gettime(CLOCK_REALTIME, &start);
-		testWrite2(device, 0, 1024*1024/8 * 4, false);
+		//testWrite2(device, 0, 1024*1024/8 * 4, false);
+		testWrite2(device, 0, 1024*16, false);
 		clock_gettime(CLOCK_REALTIME, & now);
 
 		fprintf(stderr, "WRITE SPEED: %f MB/s\n", ((1024*1024*4)/1000)/timespec_diff_sec(start,now));
 
+		sleep(2);
+
 		clock_gettime(CLOCK_REALTIME, &start);
-		testRead2(device, 0, 1024*1024/8 * 4 , false);
+		//testRead2(device, 0, 1024*1024/8 * 4 , false);
+		testRead2(device, 0, 1024*16, false);
 		clock_gettime(CLOCK_REALTIME, & now);
 
 		fprintf(stderr, "READ SPEED: %f MB/s\n", ((1024*1024*4)/1000)/timespec_diff_sec(start,now));
 
-		fprintf(stderr, "READ MAPPING TABLE REQ\n");
-		uint32_t map_cnt = 0;
-		for (uint32_t seg=0; seg < NUM_SEGMENTS; seg++)  {
-			for (uint16_t virt_blk = 0; virt_blk < NUM_VIRTBLKS; virt_blk++) {
-				device->readMapping(map_cnt);
-				map_cnt++;
-			}
-		}
-
-		fprintf(stderr, "WAIT READ MAPPING TABLE RESP\n");
-
-		int maxMappingReads = NUM_SEGMENTS*NUM_VIRTBLKS;
-		int elapsed = 10000;
-		while (true) {
-			usleep(100);
-			if (elapsed == 0) {
-				elapsed=10000;
-			}
-			else {
-				elapsed--;
-			}
-			if (mappingReads == maxMappingReads ) break;
-		}
-
-		fprintf(stderr, "MAPPING TABLE FLUSHING\n");
-
-		__writeAFTLtoFile("map.bin");
+//		fprintf(stderr, "READ MAPPING TABLE REQ\n");
+//		uint32_t map_cnt = 0;
+//		for (uint32_t seg=0; seg < NUM_SEGMENTS; seg++)  {
+//			for (uint16_t virt_blk = 0; virt_blk < NUM_VIRTBLKS; virt_blk++) {
+//				device->readMapping(map_cnt);
+//				map_cnt++;
+//			}
+//		}
+//
+//		fprintf(stderr, "WAIT READ MAPPING TABLE RESP\n");
+//
+//		int maxMappingReads = NUM_SEGMENTS*NUM_VIRTBLKS;
+//		int elapsed = 10000;
+//		while (true) {
+//			usleep(100);
+//			if (elapsed == 0) {
+//				elapsed=10000;
+//			}
+//			else {
+//				elapsed--;
+//			}
+//			if (mappingReads == maxMappingReads ) break;
+//		}
+//
+//		fprintf(stderr, "MAPPING TABLE FLUSHING\n");
+//
+//		__writeAFTLtoFile("map.bin");
 	}
 #endif
 
