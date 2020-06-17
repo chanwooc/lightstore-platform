@@ -51,35 +51,27 @@
 ################################################################################
 ## XDC generated for xcvu095-ffva2104-2 device
 # 275.0MHz GT Reference clock constraint
-create_clock -name GT_REFCLK1_FMC1 -period 3.636	 [get_pins -hier -filter {NAME =~ */fmc1_gt_clk_i/O}]
-create_clock -name GT_REFCLK1_FMC2 -period 3.636	 [get_pins -hier -filter {NAME =~ */fmc2_gt_clk_i/O}]
+create_clock -name fmc0_gt_refclk -period 3.636 [get_ports aurora_clk_fmc0_gt_clk_p_v]
+create_clock -name fmc1_gt_refclk -period 3.636 [get_ports aurora_clk_fmc1_gt_clk_p_v]
 
 ####################### GT reference clock LOC #######################
-set_property LOC N9 [get_ports aurora_clk_fmc1_gt_clk_p_v]
-set_property LOC N8 [get_ports aurora_clk_fmc1_gt_clk_n_v]
-set_property LOC AA9 [get_ports aurora_clk_fmc2_gt_clk_p_v]
-set_property LOC AA8 [get_ports aurora_clk_fmc2_gt_clk_n_v]
+set_property LOC N9 [get_ports aurora_clk_fmc0_gt_clk_p_v]
+set_property LOC N8 [get_ports aurora_clk_fmc0_gt_clk_n_v]
+set_property LOC AA9 [get_ports aurora_clk_fmc1_gt_clk_p_v]
+set_property LOC AA8 [get_ports aurora_clk_fmc1_gt_clk_n_v]
 
-#create_clock -name auroraI_user_clk_i_fmc1 -period 9.091	 [get_pins -hierarchical -regexp {.*auroraIntra1.*/aurora_module_i/clock_module_i/user_clk_buf_i/O}]
-#create_clock -name auroraI_user_clk_i_fmc2 -period 9.091	 [get_pins -hierarchical -regexp {.*auroraIntra2.*/aurora_module_i/clock_module_i/user_clk_buf_i/O}]
-create_clock -name auroraI_user_clk_i_fmc1 -period 9.091 [get_pins -hierarchical -regexp {.*flashCtrls_0.*/aurora_module_i/clock_module_i/user_clk_buf_i/O}]
-create_clock -name auroraI_user_clk_i_fmc2 -period 9.091 [get_pins -hierarchical -regexp {.*flashCtrls_1.*/aurora_module_i/clock_module_i/user_clk_buf_i/O}]
+# create_clock -name fmc0_aurora_userclk -period 9.090 [get_pins -hierarchical -regexp {.*flashCtrls_0.*/aurora_module_i/clock_module_i/user_clk_buf_i/I}]
+# create_clock -name fmc1_aurora_userclk -period 9.090 [get_pins -hierarchical -regexp {.*flashCtrls_1.*/aurora_module_i/clock_module_i/user_clk_buf_i/I}]
+create_generated_clock -name fmc0_aurora_userclk [get_pins -hier -regex {.*flashCtrls_0.*/.*channel_inst\[2\].*/TXOUTCLK}]
+create_generated_clock -name fmc1_aurora_userclk [get_pins -hier -regex {.*flashCtrls_1.*/.*channel_inst\[2\].*/TXOUTCLK}]
 
-set pcie250 [get_clocks -of_objects  [get_pins *ep7/pcie_ep/inst/gt_top_i/phy_clk_i/bufg_gt_userclk/O]]
-create_generated_clock -name auroraI_init_clk_i -master_clock $pcie250 [get_pins *ep7/clkgen_pll/CLKOUT0]
-set portal_usrclk [get_clocks -of_objects [get_pins *ep7/CLK_epPortalClock]]
-set auroraI_init_clk_i [get_clocks -of_objects [get_pins *ep7/CLK_epDerivedClock]]
-
-###### CDC async group auroraI_user_clk_i and portal_usrclk ##############
-set_clock_groups -asynchronous -group {auroraI_user_clk_i_fmc1} -group $portal_usrclk
-set_clock_groups -asynchronous -group {auroraI_user_clk_i_fmc2} -group $portal_usrclk
-
-###### CDC async group auroraI_init_clk_i and portal_usrclk ##############
-set_clock_groups -asynchronous -group $auroraI_init_clk_i -group $portal_usrclk
+###### CDC async group auroraI_user_clk_i and portal_main_clk (Sync FIFO) ##############
+set_clock_groups -asynchronous -group {fmc0_aurora_userclk} -group {portal_main_clk}
+set_clock_groups -asynchronous -group {fmc1_aurora_userclk} -group {portal_main_clk}
 
 ###### CDC in RESET_LOGIC from INIT_CLK to USER_CLK ##############
+set_false_path -to [get_pins -hier *aurora_8b10b_fmc0_cdc_to*/D]
 set_false_path -to [get_pins -hier *aurora_8b10b_fmc1_cdc_to*/D]
-set_false_path -to [get_pins -hier *aurora_8b10b_fmc2_cdc_to*/D]
 
 # False path constraints for Ultrascale Clocking Module (BUFG_GT)
 # ----------------------------------------------------------------------------------------------------------------------

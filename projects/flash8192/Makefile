@@ -35,11 +35,11 @@ ip.%:
 # per-platform definitions
 ifeq ($(BOARD), bluesim)
 CONNECTALFLAGS += --bscflags " -D BSIM -D NAND_SIM "
-CONNECTALFLAGS += --bsvpath ../../platform/aurora_intra/aurora_8b10b_vc707  # use vc707 simulation model
+CONNECTALFLAGS += --bsvpath ../../platform/aurora_intra/aurora_8b10b_zcu
 
 else ifeq ($(BOARD), verilator)
 CONNECTALFLAGS += --bscflags " -D BSIM -D NAND_SIM "
-CONNECTALFLAGS += --bsvpath ../../platform/aurora_intra/aurora_8b10b_vc707
+CONNECTALFLAGS += --bsvpath ../../platform/aurora_intra/aurora_8b10b_zcu
 
 else ifeq ($(BOARD), zcu102)
 NOHOST_XDC = ../../misc/nohost_zcu.xdc
@@ -82,16 +82,14 @@ CONNECTALFLAGS += -D DEFAULT_NOPROGRAM=1    # To suppress automatic fpga program
 CONNECTALFLAGS += \
 	--bsvpath ../../platform/aurora_intra/aurora_8b10b_vc707/ \
 	--verilog ../../platform/aurora_intra/aurora_8b10b_vc707/ \
-	--xci $(CONNECTALDIR)/out/$(BOARD)/aurora_8b10b_fmc1/aurora_8b10b_fmc1.xci \
-	--constraint ../../platform/aurora_intra/aurora_8b10b_vc707/aurora_8b10b_fmc1_exdes.xdc \
-	--constraint $(NOHOST_XDC) \
-	--implconstraint ../../platform/aurora_intra/aurora_8b10b_vc707/aurora_8b10b_fmc1_exdes.xdc \
-	--implconstraint $(NOHOST_XDC)
+	--xci $(CONNECTALDIR)/out/$(BOARD)/aurora_8b10b_fmc0/aurora_8b10b_fmc0.xci \
+	--implconstraint $(NOHOST_XDC) \
+	--implconstraint ../../platform/aurora_intra/aurora_8b10b_vc707/aurora_8b10b_fmcs_exdes.xdc \
 
-$(IPDIR)/$(BOARD)/aurora_8b10b_fmc1/aurora_8b10b_fmc1.xci: ../../coregen/synth-aurora-intra-vc707-fmc1.tcl
-	cd $(BOARD); vivado -mode batch -source ../../../coregen/synth-aurora-intra-vc707-fmc1.tcl
+$(IPDIR)/$(BOARD)/aurora_8b10b_fmc1/aurora_8b10b_fmc0.xci: ../../coregen/synth-aurora-intra-vc707-fmc0.tcl
+	cd $(BOARD); vivado -mode batch -source ../../../coregen/synth-aurora-intra-vc707-fmc0.tcl
 
-aurora_intra: $(IPDIR)/$(BOARD)/aurora_8b10b_fmc1/aurora_8b10b_fmc1.xci
+aurora_intra: $(IPDIR)/$(BOARD)/aurora_8b10b_fmc0/aurora_8b10b_fmc0.xci
 endif
 
 include $(CONNECTALDIR)/Makefile.connectal

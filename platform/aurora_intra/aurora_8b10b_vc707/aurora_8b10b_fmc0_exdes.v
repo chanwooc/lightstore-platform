@@ -58,43 +58,47 @@
 //
 //        
 `timescale 1 ns / 1 ps
-(* core_generation_info = "aurora_8b10b_fmc2,aurora_8b10b_v11_1_2,{user_interface=AXI_4_Streaming,backchannel_mode=Sidebands,c_aurora_lanes=4,c_column_used=left,c_gt_clock_1=GTHQ0,c_gt_clock_2=None,c_gt_loc_1=1,c_gt_loc_10=X,c_gt_loc_11=X,c_gt_loc_12=X,c_gt_loc_13=X,c_gt_loc_14=X,c_gt_loc_15=X,c_gt_loc_16=X,c_gt_loc_17=X,c_gt_loc_18=X,c_gt_loc_19=X,c_gt_loc_2=2,c_gt_loc_20=X,c_gt_loc_21=X,c_gt_loc_22=X,c_gt_loc_23=X,c_gt_loc_24=X,c_gt_loc_25=X,c_gt_loc_26=X,c_gt_loc_27=X,c_gt_loc_28=X,c_gt_loc_29=X,c_gt_loc_3=3,c_gt_loc_30=X,c_gt_loc_31=X,c_gt_loc_32=X,c_gt_loc_33=X,c_gt_loc_34=X,c_gt_loc_35=X,c_gt_loc_36=X,c_gt_loc_37=X,c_gt_loc_38=X,c_gt_loc_39=X,c_gt_loc_4=4,c_gt_loc_40=X,c_gt_loc_41=X,c_gt_loc_42=X,c_gt_loc_43=X,c_gt_loc_44=X,c_gt_loc_45=X,c_gt_loc_46=X,c_gt_loc_47=X,c_gt_loc_48=X,c_gt_loc_5=X,c_gt_loc_6=X,c_gt_loc_7=X,c_gt_loc_8=X,c_gt_loc_9=X,c_lane_width=4,c_line_rate=44000,c_nfc=false,c_nfc_mode=IMM,c_refclk_frequency=275000,c_simplex=false,c_simplex_mode=TX,c_stream=true,c_ufc=false,flow_mode=None,interface_mode=Streaming,dataflow_config=Duplex}" *)
+(* core_generation_info = "aurora_8b10b_fmc0,aurora_8b10b_v11_0,{user_interface=AXI_4_Streaming,backchannel_mode=Sidebands,c_aurora_lanes=4,c_column_used=right,c_gt_clock_1=GTXQ5,c_gt_clock_2=None,c_gt_loc_1=X,c_gt_loc_10=X,c_gt_loc_11=X,c_gt_loc_12=X,c_gt_loc_13=1,c_gt_loc_14=2,c_gt_loc_15=3,c_gt_loc_16=4,c_gt_loc_17=X,c_gt_loc_18=X,c_gt_loc_19=X,c_gt_loc_2=X,c_gt_loc_20=X,c_gt_loc_21=X,c_gt_loc_22=X,c_gt_loc_23=X,c_gt_loc_24=X,c_gt_loc_25=X,c_gt_loc_26=X,c_gt_loc_27=X,c_gt_loc_28=X,c_gt_loc_29=X,c_gt_loc_3=X,c_gt_loc_30=X,c_gt_loc_31=X,c_gt_loc_32=X,c_gt_loc_33=X,c_gt_loc_34=X,c_gt_loc_35=X,c_gt_loc_36=X,c_gt_loc_37=X,c_gt_loc_38=X,c_gt_loc_39=X,c_gt_loc_4=X,c_gt_loc_40=X,c_gt_loc_41=X,c_gt_loc_42=X,c_gt_loc_43=X,c_gt_loc_44=X,c_gt_loc_45=X,c_gt_loc_46=X,c_gt_loc_47=X,c_gt_loc_48=X,c_gt_loc_5=X,c_gt_loc_6=X,c_gt_loc_7=X,c_gt_loc_8=X,c_gt_loc_9=X,c_lane_width=4,c_line_rate=44000,c_nfc=false,c_nfc_mode=IMM,c_refclk_frequency=275000,c_simplex=false,c_simplex_mode=TX,c_stream=true,c_ufc=false,flow_mode=None,interface_mode=Streaming,dataflow_config=Duplex}" *)
 (* DowngradeIPIdentifiedWarnings="yes" *)
-module aurora_8b10b_fmc2_exdes #
+module aurora_8b10b_fmc0_exdes #
 (
-     parameter   USE_CORE_TRAFFIC     = 0,
+     parameter   USE_CORE_TRAFFIC     = 1,
      parameter   USE_CHIPSCOPE        = 0
 )
 (
- RX_DATA,
- rx_en,
- rx_rdy,
+	//Chanwoo IO
+	RX_DATA,
+	rx_en,
+	rx_rdy,
 
- TX_DATA,
- tx_en,
- tx_rdy,
+	TX_DATA,
+	tx_en,
+	tx_rdy,
 
- USER_CLK,
- USER_RST,
- USER_RST_N,
+	USER_CLK,
+	USER_RST,
+	USER_RST_N,
 
     // User IO
-    RESET_N,
+    RESET_N,   // RESET -> RESET_N (Chanwoo)
     HARD_ERR,
     SOFT_ERR,
     ERR_COUNT,
 
     LANE_UP,
     CHANNEL_UP,
-    // INIT_CLK_P,
-    // INIT_CLK_N,
- INIT_CLK_IN,
-    GT_RESET_N,
+	//Some Pins Not Needed - Chanwoo
+//    INIT_CLK_P,
+//    INIT_CLK_N,
+//    DRP_CLK_IN,
+    GT_RESET_N,  // IN->N
 
-    // GT_REFCLK_P,
-    // GT_REFCLK_N,
- GT_REFCLK,
+//    GTXQ5_P,
+//    GTXQ5_N,
 
+	//Chanwoo IO
+	INIT_CLK_IN,
+	GTX_CLK,
 
     // GT I/O
     RXP,
@@ -105,24 +109,25 @@ module aurora_8b10b_fmc2_exdes #
 
 
 //***********************************Port Declarations*******************************
-   output [0:127] RX_DATA;
-   input          rx_en;
-   output         rx_rdy;
+	//Chanwoo IO
+	output [0:127] RX_DATA;
+	input rx_en;
+	output rx_rdy;
 
-   input [0:127]  TX_DATA;
-   input          tx_en;
-   output         tx_rdy;
+	input [0:127] TX_DATA;
+	input tx_en;
+	output tx_rdy;
 
-   output         USER_CLK;
-   output         USER_RST;
-   output         USER_RST_N;
+	output USER_CLK;
+	output USER_RST;
+	output USER_RST_N;
 
     // User I/O
-input              RESET_N;
-// input              INIT_CLK_P;
-// input              INIT_CLK_N;
-input INIT_CLK_IN; // done outside the wrapper, 110Mhz
-input              GT_RESET_N;
+input              RESET_N; // RESET -> RESET_N (Chanwoo)
+//input              INIT_CLK_P;
+//input              INIT_CLK_N;
+//input              DRP_CLK_IN;
+input              GT_RESET_N; // IN -> N (Chanwoo)
 output             HARD_ERR;
 output             SOFT_ERR;
 output  [0:7]      ERR_COUNT;
@@ -131,67 +136,37 @@ output  [0:7]      ERR_COUNT;
 output  [0:3]      LANE_UP;
 output             CHANNEL_UP;
     // Clocks
-// input              GT_REFCLK_P;
-// input              GT_REFCLK_N;
-   input           GT_REFCLK;
+//input              GTXQ5_P;
+//input              GTXQ5_N;
+    input INIT_CLK_IN;
+    input GTX_CLK;
 
-
-
-// courtesy of Chanwoo
+// wjun
 	reg [0:127] RX_DATA_delay;
 	reg        rx_rdy_delay;
 
 	wire RESET;
 	assign RESET = ~RESET_N;
+	wire DRP_CLK_IN;
+	assign DRP_CLK_IN = INIT_CLK_IN;
 	wire GT_RESET_IN;
 	assign GT_RESET_IN = ~GT_RESET_N;
 	assign USER_CLK = user_clk_i;
-	//assign USER_RST = system_reset_i;
+	assign USER_RST = system_reset_i;
 	assign USER_RST_N = !system_reset_i;
 	
-	assign tx_tvalid_i = tx_en;
-	assign tx_rdy = tx_tready_i && channel_up_i && !system_reset_i ;
-	assign tx_data_i = TX_DATA;
+	assign tx_src_rdy_n_i = !tx_en;
+	assign tx_rdy = (!tx_dst_rdy_n_i) && channel_up_i && !system_reset_i ;
+	assign tx_d_i = TX_DATA;
 	
 	assign RX_DATA = RX_DATA_delay;
 	assign rx_rdy = rx_rdy_delay;
 
 	always @ (posedge user_clk_i) begin
-		rx_rdy_delay <= !system_reset_i && channel_up_i && rx_tvalid_i;
-		RX_DATA_delay <= rx_data_i;
+		rx_rdy_delay <=  !system_reset_i && channel_up_i && !rx_src_rdy_n_i;
+		RX_DATA_delay <= rx_d_i;
 	end
 
-	assign reset_i = RESET;
-	assign  gtreset_vio_o =   GT_RESET_IN;
-	assign  loopback_vio_o =   3'b000;
-
-/* -----\/----- EXCLUDED -----\/-----
-// courtesy of wjun
-   reg [0:127]     RX_DATA_delay;
-   reg             rx_rdy_delay;
-
-   wire            RESET;
-   assign RESET = ~RESET_N;
-   assign DRP_CLK_IN = INIT_CLK_IN;
-   wire            GT_RESET_IN;
-   assign GT_RESET_IN = ~GT_RESET_N;
-   assign USER_CLK = user_clk_i;
-   assign USER_RST = system_reset_i;
-   assign USER_RST_N = !system_reset_i;
-
-   assign tx_src_rdy_n_i = !tx_en;
-   assign tx_rdy = (!tx_dst_rdy_n_i) && channel_up_i && !system_reset_i;
-   assign tx_d_i = TX_DATA;
-
-   assign RX_DATA = RX_DATA_delay;
-   assign rx_rdy = rx_rdy_delay;
-
-   always @ (posedge user_clk_i) begin
-      rx_rdy_delay <=  !system_reset_i && channel_up_i && !rx_src_rdy_n_i;
-      RX_DATA_delay <= rx_d_i;
-   end
-   
- -----/\----- EXCLUDED -----/\----- */
 
     // GT Serial I/O
 input   [0:3]      RXP;
@@ -207,12 +182,12 @@ reg     [0:3]      LANE_UP;
 reg                CHANNEL_UP;
 //********************************Wire Declarations**********************************
     // Stream TX Interface
-// (* mark_debug = "true" *) wire    [0:127]    tx_d_i;
-// wire               tx_src_rdy_n_i;
-// wire               tx_dst_rdy_n_i;
+(* mark_debug = "true" *) wire    [0:127]    tx_d_i;
+wire               tx_src_rdy_n_i;
+wire               tx_dst_rdy_n_i;
     // Stream RX Interface
-// (* mark_debug = "true" *) wire    [0:127]    rx_d_i;
-// wire               rx_src_rdy_n_i;
+wire    [0:127]    rx_d_i;
+wire               rx_src_rdy_n_i;
 
     // Error Detection Interface
 (* mark_debug = "true" *)wire               hard_err_i;
@@ -235,7 +210,8 @@ wire               tx_lock_i;
 (* mark_debug = "true" *)wire               tx_resetdone_i;
 (* mark_debug = "true" *)wire               tx_resetdone_ila;
 (* mark_debug = "true" *)wire               rx_resetdone_i;
-(* KEEP = "TRUE" *) wire               init_clk_i;
+//(* KEEP = "TRUE" *) wire               init_clk_i;
+// assign init_clk_i = INIT_CLK_IN;
 wire    [8:0]     daddr_in_i;
 wire              dclk_in_i;
 wire              den_in_i;
@@ -301,27 +277,18 @@ wire               tx_tready_i;
     // RX AXI PDU I/F wires
 wire    [0:127]    rx_data_i;
 wire               rx_tvalid_i;
-   //  wire               INIT_CLK_IN;
-   // wire  drpclk_i;
+//   wire  drpclk_i;
    //SLACK Registers
    reg    [0:3]      lane_up_r;
    reg    [0:3]      lane_up_r2;
 //*********************************Main Body of Code**********************************
 
-  // IBUFDS init_clk_ibufg_i
-  // (
-  //  .I(INIT_CLK_P),
-  //  .IB(INIT_CLK_N),
-  //  .O(INIT_CLK_IN)
-  // );
-
-  // BUFG init_clk_bufg
-  //  (.O   (init_clk_i),
-  //   .I   (INIT_CLK_IN));
  
 
-assign init_clk_i = INIT_CLK_IN; // this is important
 
+//  BUFG drpclk_bufg
+//   (.O   (drpclk_i),
+//    .I   (DRP_CLK_IN));
 
   //SLACK registers
   always @ (posedge user_clk_i)
@@ -374,7 +341,7 @@ assign  di_in_lane3_i     =  16'h0;
 assign  dwe_in_lane3_i    =  1'b0;
 //___________________________Module Instantiations_________________________________
 
-    aurora_8b10b_fmc2_support aurora_module_i
+    aurora_8b10b_fmc0_support aurora_module_i
     (
         // AXI TX Interface
         .s_axi_tx_tdata(tx_data_i),
@@ -390,11 +357,9 @@ assign  dwe_in_lane3_i    =  1'b0;
         .txp(TXP),
         .txn(TXN),
         // GT Reference Clock Interface
- 
-        // .gt_refclk1_p(GT_REFCLK_P),
-        // .gt_refclk1_n(GT_REFCLK_N),
-     .gt_refclk1(GT_REFCLK),
-     
+		.gt_refclk1_i(GTX_CLK),
+        //.gt_refclk1_p(GTXQ5_P),
+        //.gt_refclk1_n(GTXQ5_N),
         // Error Detection Interface
         .hard_err(hard_err_i),
         .soft_err(soft_err_i),
@@ -414,36 +379,39 @@ assign  dwe_in_lane3_i    =  1'b0;
         .pll_not_locked_out(pll_not_locked_i),
 	.tx_resetdone_out(tx_resetdone_i),
 	.rx_resetdone_out(rx_resetdone_i),
-        .init_clk_in(init_clk_i),
-.gt0_drpaddr  (daddr_in_i),
-.gt0_drpen    (den_in_i),
-.gt0_drpdi     (di_in_i),
-.gt0_drprdy  (drdy_out_unused_i),
-.gt0_drpdo (drpdo_out_unused_i),
-.gt0_drpwe    (dwe_in_i),
-.gt1_drpaddr  (daddr_in_lane1_i),
-.gt1_drpen    (den_in_lane1_i),
-.gt1_drpdi     (di_in_lane1_i),
-.gt1_drprdy  (drdy_out_lane1_unused_i),
-.gt1_drpdo (drpdo_out_lane1_unused_i),
-.gt1_drpwe    (dwe_in_lane1_i),
-.gt2_drpaddr  (daddr_in_lane2_i),
-.gt2_drpen    (den_in_lane2_i),
-.gt2_drpdi     (di_in_lane2_i),
-.gt2_drprdy  (drdy_out_lane2_unused_i),
-.gt2_drpdo (drpdo_out_lane2_unused_i),
-.gt2_drpwe    (dwe_in_lane2_i),
-.gt3_drpaddr  (daddr_in_lane3_i),
-.gt3_drpen    (den_in_lane3_i),
-.gt3_drpdi     (di_in_lane3_i),
-.gt3_drprdy  (drdy_out_lane3_unused_i),
-.gt3_drpdo (drpdo_out_lane3_unused_i),
-.gt3_drpwe    (dwe_in_lane3_i),
+//        .init_clk_p(INIT_CLK_P),
+//        .init_clk_n(INIT_CLK_N),
+		.init_clk_in(INIT_CLK_IN),
+		.drpclk_in  (DRP_CLK_IN),
+//        .init_clk_out (init_clk_i),
+.drpaddr_in  (daddr_in_i),
+.drpen_in    (den_in_i),
+.drpdi_in     (di_in_i),
+.drprdy_out  (drdy_out_unused_i),
+.drpdo_out (drpdo_out_unused_i),
+.drpwe_in    (dwe_in_i),
+.drpaddr_in_lane1  (daddr_in_lane1_i),
+.drpen_in_lane1    (den_in_lane1_i),
+.drpdi_in_lane1     (di_in_lane1_i),
+.drprdy_out_lane1  (drdy_out_lane1_unused_i),
+.drpdo_out_lane1 (drpdo_out_lane1_unused_i),
+.drpwe_in_lane1    (dwe_in_lane1_i),
+.drpaddr_in_lane2  (daddr_in_lane2_i),
+.drpen_in_lane2    (den_in_lane2_i),
+.drpdi_in_lane2     (di_in_lane2_i),
+.drprdy_out_lane2  (drdy_out_lane2_unused_i),
+.drpdo_out_lane2 (drpdo_out_lane2_unused_i),
+.drpwe_in_lane2    (dwe_in_lane2_i),
+.drpaddr_in_lane3  (daddr_in_lane3_i),
+.drpen_in_lane3    (den_in_lane3_i),
+.drpdi_in_lane3     (di_in_lane3_i),
+.drprdy_out_lane3  (drdy_out_lane3_unused_i),
+.drpdo_out_lane3 (drpdo_out_lane3_unused_i),
+.drpwe_in_lane3    (dwe_in_lane3_i),
 
         .link_reset_out(link_reset_i)
     );
 
-/* -----\/----- EXCLUDED -----\/-----
 generate
  if (USE_CORE_TRAFFIC==1)
  begin : traffic
@@ -475,20 +443,6 @@ generate
      .AXI4_S_IP_TREADY(tx_tready_i)
     );
 
-    // //Connect a frame generator to the TX User interface
-    // aurora_8b10b_fmc1_FRAME_GEN frame_gen_i
-    // (
-    //     // User Interface
-    //     .TX_D(tx_d_i), 
-    //     .TX_SRC_RDY_N(tx_src_rdy_n_i),
-    //     .TX_DST_RDY_N(tx_dst_rdy_n_i),
-
-
-    //     // System Interface
-    //     .USER_CLK(user_clk_i),      
-    //     .RESET(system_reset_i),
-    //     .CHANNEL_UP(channel_up_r)
-    // );
     //_____________________________ RX AXI SHIM _______________________________
     aurora_8b10b_fmc1_AXI_TO_LL_EXDES #
     (
@@ -518,20 +472,6 @@ generate
      .RESET(system_reset_i),
      .CHANNEL_UP(channel_up_r)
      );
-
-    // aurora_8b10b_fmc1_FRAME_CHECK frame_check_i
-    // (
-    //     // User Interface
-    //     .RX_D(rx_d_i), 
-    //     .RX_SRC_RDY_N(rx_src_rdy_n_i),
-
-    //     // System Interface
-    //     .USER_CLK(user_clk_i),      
-    //     .RESET(system_reset_i),
-    //     .CHANNEL_UP(channel_up_r),
-    //     .ERR_COUNT(err_count_i)
-    // );   
- 
  end //end USE_CORE_TRAFFIC=1 block
  else
  begin: no_traffic
@@ -570,10 +510,10 @@ begin
   lane_up_i_i_r <= lane_up_i_i;
 end
 
-  aurora_8b10b_fmc1_cdc_sync_exdes
-    #(
+  aurora_8b10b_fmc1_cdc_sync_exdes #
+     (
        .c_cdc_type      (1             ),   
-       .c_flop_input    (1             ),  
+       .c_flop_input    (0             ),  
        .c_reset_state   (0             ),  
        .c_single_bit    (1             ),  
        .c_vector_width  (2             ),  
@@ -584,17 +524,17 @@ end
        .prmry_rst_n     (1'b1              ),
        .prmry_in        (channel_up_r      ),
        .prmry_vect_in   (2'd0              ),
-       .scndry_aclk     (init_clk_i        ),
+       .scndry_aclk     (INIT_CLK_IN        ),
        .scndry_rst_n    (1'b1              ),
        .prmry_ack       (                  ),
        .scndry_out      (channel_up_r_vio  ),
        .scndry_vect_out (                  ) 
       );
       
-  aurora_8b10b_fmc1_cdc_sync_exdes
-     #(
+  aurora_8b10b_fmc1_cdc_sync_exdes #
+      (
         .c_cdc_type      (1             ),   
-        .c_flop_input    (1             ),  
+        .c_flop_input    (0             ),  
         .c_reset_state   (0             ),  
         .c_single_bit    (1             ),  
         .c_vector_width  (2             ),  
@@ -605,17 +545,17 @@ end
         .prmry_rst_n     (1'b1              ),
         .prmry_in        (lane_up_i_i_r     ),
         .prmry_vect_in   (2'd0              ),
-        .scndry_aclk     (init_clk_i        ),
+        .scndry_aclk     (INIT_CLK_IN        ),
         .scndry_rst_n    (1'b1              ),
         .prmry_ack       (                  ),
         .scndry_out      (lane_up_i_i_vio   ),
         .scndry_vect_out (                  ) 
        );
    
-  aurora_8b10b_fmc1_cdc_sync_exdes
-       #(
+  aurora_8b10b_fmc1_cdc_sync_exdes #
+      (
           .c_cdc_type      (1             ),   
-          .c_flop_input    (1             ),  
+          .c_flop_input    (0             ),  
           .c_reset_state   (0             ),  
           .c_single_bit    (1             ),  
           .c_vector_width  (2             ),  
@@ -626,24 +566,24 @@ end
           .prmry_rst_n     (1'b1              ),
           .prmry_in        (tx_lock_i_i       ),
           .prmry_vect_in   (2'd0              ),
-          .scndry_aclk     (init_clk_i        ),
+          .scndry_aclk     (INIT_CLK_IN        ),
           .scndry_rst_n    (1'b1              ),
           .prmry_ack       (                  ),
           .scndry_out      (tx_lock_i_i_vio   ),
           .scndry_vect_out (                  ) 
          );
             
-  aurora_8b10b_fmc1_cdc_sync_exdes
-       #(
+  aurora_8b10b_fmc1_cdc_sync_exdes #
+        (
           .c_cdc_type      (1             ),   
-          .c_flop_input    (1             ),  
+          .c_flop_input    (0             ),  
           .c_reset_state   (0             ),  
           .c_single_bit    (1             ),  
           .c_vector_width  (2             ),  
           .c_mtbf_stages   (3              )
         )system_reset_vio_cdc_sync_exdes
         (
-          .prmry_aclk      (init_clk_i        ),
+          .prmry_aclk      (INIT_CLK_IN        ),
           .prmry_rst_n     (1'b1              ),
           .prmry_in        (sysreset_vio_i    ),
           .prmry_vect_in   (2'd0              ),
@@ -657,9 +597,9 @@ end
   //-----------------------------------------------------------------
   //  VIO core instance
   //-----------------------------------------------------------------
-vio_8series i_vio 
+vio_7series i_vio 
 (
-  .clk(init_clk_i), // input CLK
+  .clk(INIT_CLK_IN), // input CLK
   .probe_in0(channel_up_r_vio), // input [0 : 0] PROBE_IN0
   .probe_in1(lane_up_i_i_vio), // input [0 : 0] PROBE_IN1
   .probe_in2(tx_lock_i_i_vio), // input [0 : 0] PROBE_IN2
@@ -671,17 +611,18 @@ vio_8series i_vio
   //-----------------------------------------------------------------
   //  ILA core instance
   //-----------------------------------------------------------------
-  aurora_8b10b_fmc1_cdc_sync_exdes
-     #(
+  
+  aurora_8b10b_fmc1_cdc_sync_exdes #
+      (
         .c_cdc_type      (1             ),   
-        .c_flop_input    (1             ),  
+        .c_flop_input    (0             ),  
         .c_reset_state   (0             ),  
         .c_single_bit    (1             ),  
         .c_vector_width  (2             ),  
         .c_mtbf_stages  (3              )
       )tx_resetdone_ila_cdc_sync_exdes 
       (
-        .prmry_aclk      (init_clk_i        ),
+        .prmry_aclk      (INIT_CLK_IN        ),
         .prmry_rst_n     (1'b1              ),
         .prmry_in        (tx_resetdone_i    ),
         .prmry_vect_in   (2'd0              ),
@@ -691,17 +632,17 @@ vio_8series i_vio
         .scndry_out      (tx_resetdone_ila  ),
         .scndry_vect_out (                  ) 
       );
-  aurora_8b10b_fmc1_cdc_sync_exdes
-     #(
+  aurora_8b10b_fmc1_cdc_sync_exdes #
+      (
         .c_cdc_type      (1             ),   
-        .c_flop_input    (1             ),  
+        .c_flop_input    (0             ),  
         .c_reset_state   (0             ),  
         .c_single_bit    (1             ),  
         .c_vector_width  (2             ),  
         .c_mtbf_stages   (3              )
       )link_reset_ila_cdc_sync_exdes 
       (
-        .prmry_aclk      (init_clk_i        ),
+        .prmry_aclk      (INIT_CLK_IN        ),
         .prmry_rst_n     (1'b1              ),
         .prmry_in        (link_reset_i      ),
         .prmry_vect_in   (2'd0              ),
@@ -711,17 +652,17 @@ vio_8series i_vio
         .scndry_out      (link_reset_ila    ),
         .scndry_vect_out (                  ) 
       );
-  aurora_8b10b_fmc1_cdc_sync_exdes
-     #(
+  aurora_8b10b_fmc1_cdc_sync_exdes #
+      (
         .c_cdc_type      (1             ),   
-        .c_flop_input    (1             ),  
+        .c_flop_input    (0             ),  
         .c_reset_state   (0             ),  
         .c_single_bit    (1             ),  
         .c_vector_width  (2             ),  
         .c_mtbf_stages   (3              )
       )pll_not_locked_ila_cdc_sync_exdes 
       (
-        .prmry_aclk      (init_clk_i        ),
+        .prmry_aclk      (INIT_CLK_IN        ),
         .prmry_rst_n     (1'b1              ),
         .prmry_in        (pll_not_locked_i  ),
         .prmry_vect_in   (2'd0              ),
@@ -732,17 +673,17 @@ vio_8series i_vio
         .scndry_vect_out (                  ) 
       );
  
-  aurora_8b10b_fmc1_cdc_sync_exdes
-     #(
+  aurora_8b10b_fmc1_cdc_sync_exdes #
+      (
         .c_cdc_type      (1             ),   
-        .c_flop_input    (1             ),  
+        .c_flop_input    (0             ),  
         .c_reset_state   (0             ),  
         .c_single_bit    (1             ),  
         .c_vector_width  (2             ),  
         .c_mtbf_stages   (3              )
       )tx_lock_i_ila_cdc_sync_exdes 
       (
-        .prmry_aclk      (init_clk_i        ),
+        .prmry_aclk      (INIT_CLK_IN        ),
         .prmry_rst_n     (1'b1              ),
         .prmry_in        (tx_lock_i_i       ),
         .prmry_vect_in   (2'd0              ),
@@ -753,7 +694,7 @@ vio_8series i_vio
         .scndry_vect_out (                  ) 
       );
       
-ila_8series i_ila (
+ila_7series i_ila (
   .clk(user_clk_i), // input CLK
   .probe0({lane_up_i_i_r,channel_up_r,pll_not_locked_ila,tx_lock_i_ila,hard_err_i,soft_err_i,1'b0,tx_resetdone_ila,rx_resetdone_i,link_reset_ila,14'd0,err_count_i,rx_d_i[0:15],tx_d_i[0:15]}) // input [63 : 0] PROBE0
 );
@@ -782,7 +723,6 @@ end
  end //end USE_CHIPSCOPE=0 block
 
 endgenerate //End generate for USE_CHIPSCOPE
- -----/\----- EXCLUDED -----/\----- */
 
 
 endmodule

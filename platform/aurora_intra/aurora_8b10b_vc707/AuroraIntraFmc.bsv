@@ -4,39 +4,76 @@ import Clocks :: *;
 import DefaultValue :: *;
 import Xilinx :: *;
 import XilinxCells :: *;
+import ConnectalClocks::*;
 import ConnectalXilinxCells::*;
 
 import AuroraCommon::*;
 import AuroraGearbox::*;
 
-import AuroraIntraFmc1::*; // AuroraIfc defined
+interface AuroraIfc;
+	method Action send(DataIfc data, PacketType ptype);
+	method ActionValue#(Tuple2#(DataIfc, PacketType)) receive;
+	method Tuple4#(Bit#(32), Bit#(32), Bit#(32), Bit#(32)) getDebugCnts;
+
+	interface Clock clk;
+	interface Reset rst;
+
+	interface AuroraStatus#(4) status;
+
+	(* prefix = "" *)
+	interface Aurora_Pins#(4) aurora;
+endinterface
 
 (* synthesize *)
-module mkAuroraIntra2#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110) (AuroraIfc);
+module mkAuroraIntra0#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110) (AuroraIfc);
+	let _m <- mkAuroraIntra(True, gt_clk_p, gt_clk_n, clk110, rst110);
+	return _m;
+endmodule
+
+(* synthesize *)
+module mkAuroraIntra1#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110) (AuroraIfc);
+	let _m <- mkAuroraIntra(False, gt_clk_p, gt_clk_n, clk110, rst110);
+	return _m;
+endmodule
+
+module mkAuroraIntra#(Bool isFMC0, Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110) (AuroraIfc);
 	Clock cur_clk <- exposeCurrentClock;
 	Reset cur_rst <- exposeCurrentReset;
 
+	B2C b2aclk <- mkB2C;
 `ifndef BSIM
-	let fmc2_gt_clk_i <- mkClockIBUFDS_GTE(
+	let gt_clk_buf <- mkClockIBUFDS_GTE(
 `ifdef ClockDefaultParam
 						   defaultValue,
 `endif
 						   True, gt_clk_p, gt_clk_n);
 
 	// init_clk is configured to match the frequency of user_clk (110MHz) for Ultrascale designs
-	//  vc707 (7-series) can also allows 110 MHz init clock frequency
+	//  vc707 (7-series) also allows 110 MHz init clock frequency
 	Clock init_clk_i = clk110;
 
-	Reset system_rst <- mkAsyncReset(16, cur_rst, init_clk_i);  // system reset should be min 6 user_clk(110MHz) cycles
-	MakeResetIfc gt_rst_ifc <- mkReset(8, True, init_clk_i); // gt_reset should be min 6 init_clk cycles
-	Reset gt_rst = gt_rst_ifc.new_rst;
-	AuroraImportIfc#(4) auroraIntraImport <- mkAuroraImport_8b10b_fmc2(fmc2_gt_clk_i.gen_clk, init_clk_i, system_rst, gt_rst);
+	Reset system_rst <- mkSyncReset(12, cur_rst, b2aclk.c);  // system reset should be min 6 user_clk(110MHz) cycles & deasserted synchronously to it
+
+	//MakeResetIfc gt_rst_ifc <- mkReset(8, True, init_clk_i); // gt_reset should be min 6 init_clk cycles
+	//Reset gt_rst = gt_rst_ifc.new_rst;
+	Reset gt_rst <- mkSyncReset(8, cur_rst, init_clk_i); // gt_reset should be min 6 init_clk cycles
+
+	AuroraImportIfc#(4) auroraIntraImport;
+	if(isFMC0) 
+		auroraIntraImport <- mkAuroraImport_8b10b_fmc0(gt_clk_buf.gen_clk, init_clk_i, system_rst, gt_rst);
+	else
+		auroraIntraImport <- mkAuroraImport_8b10b_fmc1(gt_clk_buf.gen_clk, init_clk_i, system_rst, gt_rst);
 `else
 	AuroraImportIfc#(4) auroraIntraImport <- mkAuroraImport_8b10b_bsim;
 `endif
 
 	Clock aclk = auroraIntraImport.aurora_clk;
 	Reset arst = auroraIntraImport.aurora_rst;
+
+	C2B aclk2b <- mkC2B(aclk, clocked_by b2aclk.c);
+	rule drive_clk_system_rst;
+		b2aclk.inputclock(aclk2b.o);
+	endrule
 
 	Reg#(Bit#(32)) gearboxSendCnt <- mkReg(0);
 	Reg#(Bit#(32)) gearboxRecCnt <- mkReg(0);
@@ -138,8 +175,73 @@ module mkAuroraImport_8b10b_bsim (AuroraImportIfc#(4));
 	endinterface
 endmodule
 
-import "BVI" aurora_8b10b_fmc2_exdes =
-module mkAuroraImport_8b10b_fmc2#(Clock gt_clk_in, Clock init_clk, Reset init_rst_n, Reset gt_rst_n) (AuroraImportIfc#(4));
+import "BVI" aurora_8b10b_fmc0_exdes =
+module mkAuroraImport_8b10b_fmc0#(Clock gt_clk_in, Clock init_clk, Reset init_rst_n, Reset gt_rst_n) (AuroraImportIfc#(4));
+	default_clock no_clock;
+	default_reset no_reset;
+
+	input_clock (INIT_CLK_IN) = init_clk;
+	input_reset (RESET_N) = init_rst_n;     // Bluespec Reset is Active Low (mapped to RESET_N)
+	input_reset (GT_RESET_N) = gt_rst_n;
+
+	output_clock aurora_clk(USER_CLK);
+	output_reset aurora_rst(USER_RST_N) clocked_by (aurora_clk);
+
+	input_clock (GTX_CLK) = gt_clk_in;
+
+	input_clock clk() <- exposeCurrentClock;
+
+	interface Aurora_Pins aurora;
+		method rxn_in(RXN) enable((*inhigh*) rx_n_en) clocked_by(clk); // Action method requires a clock domain
+		method rxp_in(RXP) enable((*inhigh*) rx_p_en) clocked_by(clk);
+		method TXN txn_out(); 
+		method TXP txp_out();
+	endinterface
+
+	interface AuroraUserIfc user;
+		interface AuroraStatus status;
+			method CHANNEL_UP channel_up();
+			method LANE_UP lane_up();
+			method HARD_ERR hard_err();
+			method SOFT_ERR soft_err();
+			method ERR_COUNT data_err_count();
+		endinterface
+
+		method send(TX_DATA) enable(tx_en) ready(tx_rdy) clocked_by(aurora_clk) reset_by(aurora_rst);
+		method RX_DATA receive() enable((*inhigh*) rx_en) ready(rx_rdy) clocked_by(aurora_clk) reset_by(aurora_rst);
+	endinterface
+	
+/*
+	schedule (aurora_rxn_in, aurora_rxp_in, aurora_txn_out, aurora_txp_out, user_channel_up, user_lane_up, user_hard_err, user_soft_err, user_data_err_count) CF 
+	(aurora_rxn_in, aurora_rxp_in, aurora_txn_out, aurora_txp_out, user_channel_up, user_lane_up, user_hard_err, user_soft_err, user_data_err_count);
+	schedule (user_send) CF (aurora_rxn_in, aurora_rxp_in, aurora_txn_out, aurora_txp_out, user_channel_up, user_lane_up, user_hard_err, user_soft_err, user_data_err_count);
+
+	schedule (user_receive) CF (aurora_rxn_in, aurora_rxp_in, aurora_txn_out, aurora_txp_out, user_channel_up, user_lane_up, user_hard_err, user_soft_err, user_data_err_count);
+
+	schedule (user_receive) SB (user_send);
+	schedule (user_send) C (user_send);
+	schedule (user_receive) C (user_receive);
+*/
+	schedule (aurora_txn_out, aurora_txp_out, user_status_channel_up, user_status_lane_up, user_status_hard_err, user_status_soft_err, user_status_data_err_count) CF 
+	(aurora_txn_out, aurora_txp_out, user_status_channel_up, user_status_lane_up, user_status_hard_err, user_status_soft_err, user_status_data_err_count);
+
+	schedule (aurora_rxn_in) CF (aurora_txn_out, aurora_txp_out, user_status_channel_up, user_status_lane_up, user_status_hard_err, user_status_soft_err, user_status_data_err_count);
+	schedule (aurora_rxp_in) CF (aurora_txn_out, aurora_txp_out, user_status_channel_up, user_status_lane_up, user_status_hard_err, user_status_soft_err, user_status_data_err_count);
+
+	schedule (user_send) CF (aurora_rxn_in, aurora_rxp_in, aurora_txn_out, aurora_txp_out, user_status_channel_up, user_status_lane_up, user_status_hard_err, user_status_soft_err, user_status_data_err_count);
+	schedule (user_receive) CF (aurora_rxn_in, aurora_rxp_in, aurora_txn_out, aurora_txp_out, user_status_channel_up, user_status_lane_up, user_status_hard_err, user_status_soft_err, user_status_data_err_count);
+
+	schedule (aurora_rxn_in) C (aurora_rxn_in);
+	schedule (aurora_rxp_in) C (aurora_rxp_in);
+	schedule (aurora_rxn_in) CF (aurora_rxp_in);
+
+	schedule (user_receive) CF (user_send);
+	schedule (user_send) C (user_send);
+	schedule (user_receive) C (user_receive);
+endmodule
+
+import "BVI" aurora_8b10b_fmc1_exdes =
+module mkAuroraImport_8b10b_fmc1#(Clock gt_clk_in, Clock init_clk, Reset init_rst_n, Reset gt_rst_n) (AuroraImportIfc#(4));
 	default_clock no_clock;
 	default_reset no_reset;
 

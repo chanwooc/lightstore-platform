@@ -7,9 +7,9 @@ import ClientServer::*;
 import Vector::*;
 import RegFile::*;
 
-
 import AuroraGearbox::*;
-import AuroraIntraFmc1::*;
+import AuroraCommon::*;
+import AuroraIntraFmc::*;
 import ControllerTypes::*;
 import FlashCtrl::*;
 import FlashBusModel::*;
@@ -62,7 +62,7 @@ module mkFlashCtrlModel#(
 	FIFO#(Tuple2#(TagT, StatusT)) ackQ <- mkSizedFIFO(64);
 	
 	//GTX-GTP Aurora. Unused in model
-	AuroraIfc auroraIntra <- mkAuroraIntra1(gtx_clk_p, gtx_clk_n, init_clk, init_rst);
+	AuroraIfc auroraIntra <- mkAuroraIntra0(gtx_clk_p, gtx_clk_n, init_clk, init_rst);
 
 	//handle reads, acks, writedataReq
 	for (Integer b=0; b < valueOf(NUM_BUSES); b=b+1) begin

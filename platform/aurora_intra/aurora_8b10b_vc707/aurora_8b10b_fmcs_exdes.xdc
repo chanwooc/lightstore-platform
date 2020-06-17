@@ -51,29 +51,29 @@
 ################################################################################
 ## XDC generated for xc7vx485t-ffg1761-2 device
 # 275.0MHz GT Reference clock constraint
-create_clock -name GT_REFCLK1 -period 3.636	 [get_pins -hier -regexp {.*/fmc1_gt_clk_i/O}]
-create_clock -name GT_REFCLK2 -period 3.636	 [get_pins -hier -regexp {.*/fmc2_gt_clk_i/O}]
+create_clock -name GT_REFCLK_FMC0 -period 3.636	 [get_ports aurora_clk_fmc0_gt_clk_p_v]
+create_clock -name GT_REFCLK_FMC1 -period 3.636	 [get_ports aurora_clk_fmc1_gt_clk_p_v]
 
 ####################### GT reference clock LOC #######################
 # FMC1
-set_property LOC E9 [get_ports aurora_clk_fmc1_gt_clk_n_v]
-set_property LOC E10 [get_ports aurora_clk_fmc1_gt_clk_p_v]
+set_property LOC E10 [get_ports aurora_clk_fmc0_gt_clk_p_v]
+set_property LOC E9 [get_ports aurora_clk_fmc0_gt_clk_n_v]
 # FMC2
-set_property LOC T7 [get_ports aurora_clk_fmc2_gt_clk_n_v]
-set_property LOC T8 [get_ports aurora_clk_fmc2_gt_clk_p_v]
+set_property LOC T8 [get_ports aurora_clk_fmc1_gt_clk_p_v]
+set_property LOC T7 [get_ports aurora_clk_fmc1_gt_clk_n_v]
 
-create_clock -name auroraI_user_clk_i_fmc1 -period 9.091 [get_pins -hierarchical -regexp {.*flashCtrls_0.*/aurora_module_i/clock_module_i/user_clk_buf_i/O}]
-create_clock -name auroraI_user_clk_i_fmc2 -period 9.091 [get_pins -hierarchical -regexp {.*flashCtrls_1.*/aurora_module_i/clock_module_i/user_clk_buf_i/O}]
+create_clock -name auroraI_user_clk_i_fmc0 -period 9.090 [get_pins -hierarchical -regexp {.*flashCtrls_0.*/aurora_module_i/clock_module_i/user_clk_buf_i/O}]
+create_clock -name auroraI_user_clk_i_fmc1 -period 9.090 [get_pins -hierarchical -regexp {.*flashCtrls_1.*/aurora_module_i/clock_module_i/user_clk_buf_i/O}]
 
 set portal_usrclk [get_clocks {clkgen_pll_CLKOUT1}]
 set auroraI_init_clk_i [get_clocks {clkgen_pll_CLKOUT0}]
 
 ###### CDC async group auroraI_user_clk_i and portal_usrclk ##############
 # set_clock_groups -asynchronous -group {auroraI_user_clk_i} -group $portal_usrclk
+set_max_delay -from [get_clocks auroraI_user_clk_i_fmc0] -to $portal_usrclk -datapath_only [get_property PERIOD $portal_usrclk]
+set_max_delay -from $portal_usrclk -to [get_clocks auroraI_user_clk_i_fmc0] -datapath_only [get_property PERIOD $portal_usrclk]
 set_max_delay -from [get_clocks auroraI_user_clk_i_fmc1] -to $portal_usrclk -datapath_only [get_property PERIOD $portal_usrclk]
 set_max_delay -from $portal_usrclk -to [get_clocks auroraI_user_clk_i_fmc1] -datapath_only [get_property PERIOD $portal_usrclk]
-set_max_delay -from [get_clocks auroraI_user_clk_i_fmc2] -to $portal_usrclk -datapath_only [get_property PERIOD $portal_usrclk]
-set_max_delay -from $portal_usrclk -to [get_clocks auroraI_user_clk_i_fmc2] -datapath_only [get_property PERIOD $portal_usrclk]
 
 
 ####### CDC async group auroraI_init_clk_i and portal_usrclk ##############
@@ -85,63 +85,63 @@ set_max_delay -from $portal_usrclk -to $auroraI_init_clk_i -datapath_only [get_p
 ###### CDC in RESET_LOGIC from INIT_CLK to USER_CLK ##############
 # set_clock_groups -asynchronous -group $auroraI_init_clk_i -group {auroraI_user_clk_i}
 set_false_path -to [get_pins -hier *cdc_to*/D]
-set_max_delay -from $auroraI_init_clk_i -to [get_clocks auroraI_user_clk_i_fmc1] -datapath_only 9.091
-set_max_delay -from $auroraI_init_clk_i -to [get_clocks auroraI_user_clk_i_fmc2] -datapath_only 9.091 
+set_max_delay -from $auroraI_init_clk_i -to [get_clocks auroraI_user_clk_i_fmc0] -datapath_only 9.091
+set_max_delay -from $auroraI_init_clk_i -to [get_clocks auroraI_user_clk_i_fmc1] -datapath_only 9.091 
 
 
 ############################### GT LOC ###################################
-# FMC1
-set_property LOC GTXE2_CHANNEL_X1Y20 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc1_i/inst/gt_wrapper_i/aurora_8b10b_fmc1_multi_gt_i/gt0_aurora_8b10b_fmc1_i/gtxe2_i}]
-set_property LOC GTXE2_CHANNEL_X1Y21 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc1_i/inst/gt_wrapper_i/aurora_8b10b_fmc1_multi_gt_i/gt1_aurora_8b10b_fmc1_i/gtxe2_i}]
-set_property LOC GTXE2_CHANNEL_X1Y22 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc1_i/inst/gt_wrapper_i/aurora_8b10b_fmc1_multi_gt_i/gt2_aurora_8b10b_fmc1_i/gtxe2_i}]
-set_property LOC GTXE2_CHANNEL_X1Y23 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc1_i/inst/gt_wrapper_i/aurora_8b10b_fmc1_multi_gt_i/gt3_aurora_8b10b_fmc1_i/gtxe2_i}]
+# FMC HPC0
+set_property LOC GTXE2_CHANNEL_X1Y20 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc0_i/inst/gt_wrapper_i/aurora_8b10b_fmc0_multi_gt_i/gt0_aurora_8b10b_fmc0_i/gtxe2_i}]
+set_property LOC GTXE2_CHANNEL_X1Y21 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc0_i/inst/gt_wrapper_i/aurora_8b10b_fmc0_multi_gt_i/gt1_aurora_8b10b_fmc0_i/gtxe2_i}]
+set_property LOC GTXE2_CHANNEL_X1Y22 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc0_i/inst/gt_wrapper_i/aurora_8b10b_fmc0_multi_gt_i/gt2_aurora_8b10b_fmc0_i/gtxe2_i}]
+set_property LOC GTXE2_CHANNEL_X1Y23 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc0_i/inst/gt_wrapper_i/aurora_8b10b_fmc0_multi_gt_i/gt3_aurora_8b10b_fmc0_i/gtxe2_i}]
   
  # X1Y20
- set_property LOC J2 [get_ports { aurora_fmc1_TXP[3] }]
- set_property LOC J1 [get_ports { aurora_fmc1_TXN[3] }]
- set_property LOC H8 [get_ports { aurora_fmc1_RXP[3] }]
- set_property LOC H7 [get_ports { aurora_fmc1_RXN[3] }]
+ set_property LOC J2 [get_ports { aurora_fmc0_TXP[3] }]
+ set_property LOC J1 [get_ports { aurora_fmc0_TXN[3] }]
+ set_property LOC H8 [get_ports { aurora_fmc0_RXP[3] }]
+ set_property LOC H7 [get_ports { aurora_fmc0_RXN[3] }]
   # X1Y21
- set_property LOC H4 [get_ports { aurora_fmc1_TXP[2] }]
- set_property LOC H3 [get_ports { aurora_fmc1_TXN[2] }]
- set_property LOC G6 [get_ports { aurora_fmc1_RXP[2] }]
- set_property LOC G5 [get_ports { aurora_fmc1_RXN[2] }]
+ set_property LOC H4 [get_ports { aurora_fmc0_TXP[2] }]
+ set_property LOC H3 [get_ports { aurora_fmc0_TXN[2] }]
+ set_property LOC G6 [get_ports { aurora_fmc0_RXP[2] }]
+ set_property LOC G5 [get_ports { aurora_fmc0_RXN[2] }]
   # X1Y22
- set_property LOC G2 [get_ports { aurora_fmc1_TXP[1] }]
- set_property LOC G1 [get_ports { aurora_fmc1_TXN[1] }]
- set_property LOC F8 [get_ports { aurora_fmc1_RXP[1] }]
- set_property LOC F7 [get_ports { aurora_fmc1_RXN[1] }]
+ set_property LOC G2 [get_ports { aurora_fmc0_TXP[1] }]
+ set_property LOC G1 [get_ports { aurora_fmc0_TXN[1] }]
+ set_property LOC F8 [get_ports { aurora_fmc0_RXP[1] }]
+ set_property LOC F7 [get_ports { aurora_fmc0_RXN[1] }]
   # X1Y23
- set_property LOC F4 [get_ports { aurora_fmc1_TXP[0] }]
- set_property LOC F3 [get_ports { aurora_fmc1_TXN[0] }]
- set_property LOC E6 [get_ports { aurora_fmc1_RXP[0] }]
- set_property LOC E5 [get_ports { aurora_fmc1_RXN[0] }]
+ set_property LOC F4 [get_ports { aurora_fmc0_TXP[0] }]
+ set_property LOC F3 [get_ports { aurora_fmc0_TXN[0] }]
+ set_property LOC E6 [get_ports { aurora_fmc0_RXP[0] }]
+ set_property LOC E5 [get_ports { aurora_fmc0_RXN[0] }]
 
-# FMC2
-set_property LOC GTXE2_CHANNEL_X1Y12 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc2_i/inst/gt_wrapper_i/aurora_8b10b_fmc2_multi_gt_i/gt0_aurora_8b10b_fmc2_i/gtxe2_i}]
-set_property LOC GTXE2_CHANNEL_X1Y13 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc2_i/inst/gt_wrapper_i/aurora_8b10b_fmc2_multi_gt_i/gt1_aurora_8b10b_fmc2_i/gtxe2_i}]
-set_property LOC GTXE2_CHANNEL_X1Y14 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc2_i/inst/gt_wrapper_i/aurora_8b10b_fmc2_multi_gt_i/gt2_aurora_8b10b_fmc2_i/gtxe2_i}]
-set_property LOC GTXE2_CHANNEL_X1Y15 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc2_i/inst/gt_wrapper_i/aurora_8b10b_fmc2_multi_gt_i/gt3_aurora_8b10b_fmc2_i/gtxe2_i}]
+# FMC HPC1
+set_property LOC GTXE2_CHANNEL_X1Y12 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc1_i/inst/gt_wrapper_i/aurora_8b10b_fmc1_multi_gt_i/gt0_aurora_8b10b_fmc1_i/gtxe2_i}]
+set_property LOC GTXE2_CHANNEL_X1Y13 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc1_i/inst/gt_wrapper_i/aurora_8b10b_fmc1_multi_gt_i/gt1_aurora_8b10b_fmc1_i/gtxe2_i}]
+set_property LOC GTXE2_CHANNEL_X1Y14 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc1_i/inst/gt_wrapper_i/aurora_8b10b_fmc1_multi_gt_i/gt2_aurora_8b10b_fmc1_i/gtxe2_i}]
+set_property LOC GTXE2_CHANNEL_X1Y15 [get_cells -hierarchical -regexp {.*aurora_8b10b_fmc1_i/inst/gt_wrapper_i/aurora_8b10b_fmc1_multi_gt_i/gt3_aurora_8b10b_fmc1_i/gtxe2_i}]
 
  # X1Y12
- set_property LOC U2 [get_ports { aurora_fmc2_TXP[3] }]
- set_property LOC U1 [get_ports { aurora_fmc2_TXN[3] }]
- set_property LOC W6 [get_ports { aurora_fmc2_RXP[3] }]
- set_property LOC W5 [get_ports { aurora_fmc2_RXN[3] }]
+ set_property LOC U2 [get_ports { aurora_fmc1_TXP[3] }]
+ set_property LOC U1 [get_ports { aurora_fmc1_TXN[3] }]
+ set_property LOC W6 [get_ports { aurora_fmc1_RXP[3] }]
+ set_property LOC W5 [get_ports { aurora_fmc1_RXN[3] }]
   # X1Y13
- set_property LOC T4 [get_ports { aurora_fmc2_TXP[2] }]
- set_property LOC T3 [get_ports { aurora_fmc2_TXN[2] }]
- set_property LOC V4 [get_ports { aurora_fmc2_RXP[2] }]
- set_property LOC V3 [get_ports { aurora_fmc2_RXN[2] }]
+ set_property LOC T4 [get_ports { aurora_fmc1_TXP[2] }]
+ set_property LOC T3 [get_ports { aurora_fmc1_TXN[2] }]
+ set_property LOC V4 [get_ports { aurora_fmc1_RXP[2] }]
+ set_property LOC V3 [get_ports { aurora_fmc1_RXN[2] }]
   # X1Y14
- set_property LOC R2 [get_ports { aurora_fmc2_TXP[1] }]
- set_property LOC R1 [get_ports { aurora_fmc2_TXN[1] }]
- set_property LOC U6 [get_ports { aurora_fmc2_RXP[1] }]
- set_property LOC U5 [get_ports { aurora_fmc2_RXN[1] }]
+ set_property LOC R2 [get_ports { aurora_fmc1_TXP[1] }]
+ set_property LOC R1 [get_ports { aurora_fmc1_TXN[1] }]
+ set_property LOC U6 [get_ports { aurora_fmc1_RXP[1] }]
+ set_property LOC U5 [get_ports { aurora_fmc1_RXN[1] }]
  ### There is a mismatch for pin names of X1Y15 in xilinx PDFs this seems to work (ug885, page 65, FMC2_HPC_DP7 M2C C2M reversed
   # X1Y15
- set_property LOC P4 [get_ports { aurora_fmc2_TXP[0] }]
- set_property LOC P3 [get_ports { aurora_fmc2_TXN[0] }]
- set_property LOC R6 [get_ports { aurora_fmc2_RXP[0] }]
- set_property LOC R5 [get_ports { aurora_fmc2_RXN[0] }]
+ set_property LOC P4 [get_ports { aurora_fmc1_TXP[0] }]
+ set_property LOC P3 [get_ports { aurora_fmc1_TXN[0] }]
+ set_property LOC R6 [get_ports { aurora_fmc1_RXP[0] }]
+ set_property LOC R5 [get_ports { aurora_fmc1_RXN[0] }]
 

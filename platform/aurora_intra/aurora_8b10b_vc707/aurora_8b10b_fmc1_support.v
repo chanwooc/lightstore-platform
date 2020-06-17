@@ -149,8 +149,8 @@ output             pll_not_locked_out
 wire                      gt0_qplllock_i;
 wire                      gt0_qpllrefclklost_i;
 wire                      gt0_qpllreset_i;
-wire                      gt_qpllclk_quad6_i;
-wire                      gt_qpllrefclk_quad6_i;
+wire                      gt_qpllclk_quad4_i;
+wire                      gt_qpllrefclk_quad4_i;
 //____________________________COMMON PORTS ;_______________________________}
 //------------------}
 
@@ -222,8 +222,8 @@ wire               gt_reset_i;
 aurora_8b10b_gt_common_wrapper gt_common_support
 (
 //____________________________COMMON PORTS ,_______________________________{
-.gt_qpllclk_quad_i     (gt_qpllclk_quad6_i   ),
-.gt_qpllrefclk_quad_i  (gt_qpllrefclk_quad6_i),
+.gt_qpllclk_quad_i     (gt_qpllclk_quad4_i   ),
+.gt_qpllrefclk_quad_i  (gt_qpllrefclk_quad4_i),
     //-------------------- Common Block  - Ref Clock Ports ---------------------
     .gt0_gtrefclk0_common_in ( gt_refclk1_i ),
 
@@ -317,8 +317,8 @@ aurora_8b10b_fmc1 aurora_8b10b_fmc1_i
 .gt0_qplllock_in        (gt0_qplllock_i),
 .gt0_qpllrefclklost_in  (gt0_qpllrefclklost_i),
 .gt0_qpllreset_out      (gt0_qpllreset_i),
-.gt_qpllclk_quad6_in (gt_qpllclk_quad6_i ),
-.gt_qpllrefclk_quad6_in (gt_qpllrefclk_quad6_i ),
+.gt_qpllclk_quad4_in (gt_qpllclk_quad4_i ),
+.gt_qpllrefclk_quad4_in (gt_qpllrefclk_quad4_i ),
 //____________________________COMMON PORTS ,_______________________________}
 //------------------}
 

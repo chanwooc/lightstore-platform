@@ -1,0 +1,7 @@
+build_dir/
+mkAFTL128.v
+mkAFTLBRAM128.v
+simTestAFTL
+simTestAFTL.so
+sim_dir/
+OLD/

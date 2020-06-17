@@ -14,10 +14,7 @@ import Pipe::*;
 
 import AuroraGearbox::*;
 import AuroraCommon::*;
-import AuroraIntraFmc1::*;
-`ifdef TWO_FLASH_CARDS
-import AuroraIntraFmc2::*;
-`endif
+import AuroraIntraFmc::*;
 import ControllerTypes::*;
 import StreamingSerDes::*;
 
@@ -54,25 +51,28 @@ module mkFlashCtrl0#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110)
 	return _m;
 endmodule
 
+`ifdef TWO_FLASH_CARDS
 (* synthesize *)
 module mkFlashCtrl1#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110)(FlashCtrlIfc);
 	let _m <- mkFlashCtrl(False, gt_clk_p, gt_clk_n, clk110, rst110); 
 	return _m;
 endmodule
+`endif
 
-module mkFlashCtrl#(Bool isFirstSlot,
+module mkFlashCtrl#(Bool isFMC0,
 	Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110) (FlashCtrlIfc);
 
 	AuroraIfc auroraIntra;
-	`ifdef TWO_FLASH_CARDS
-		if (isFirstSlot)
-			auroraIntra <- mkAuroraIntra1(gt_clk_p, gt_clk_n, clk110, rst110);
-		else
-			auroraIntra <- mkAuroraIntra2(gt_clk_p, gt_clk_n, clk110, rst110);
-	`else
-		if (!isFirstSlot) error("Turn on TWO_FLASH_CARDS to use the second slot");
+
+`ifdef TWO_FLASH_CARDS
+	if (isFMC0)
+		auroraIntra <- mkAuroraIntra0(gt_clk_p, gt_clk_n, clk110, rst110);
+	else
 		auroraIntra <- mkAuroraIntra1(gt_clk_p, gt_clk_n, clk110, rst110);
-	`endif
+`else
+	if (!isFMC0) error("Turn on TWO_FLASH_CARDS to use the second slot");
+	auroraIntra <- mkAuroraIntra0(gt_clk_p, gt_clk_n, clk110, rst110);
+`endif
 
 	FIFO#(FlashCmd) flashCmdQ <- mkSizedFIFO(16); //should not have back pressure
 	FIFO#(Tuple2#(Bit#(128), TagT)) wrDataQ <- mkSizedFIFO(16); //TODO size?
@@ -87,7 +87,6 @@ module mkFlashCtrl#(Bool isFirstSlot,
 	Reg#(Bit#(SerInSz)) serReg <- mkReg(0);
 	Reg#(Bit#(4)) phase <- mkReg(0);
 
-	
 	//SEND V7 -> A7 rules: sendCmd and write data
 	//Prioritize sendCmd over writeData
 	(* descending_urgency = "forwardCmd, forwardWrData" *)
@@ -123,7 +122,6 @@ module mkFlashCtrl#(Bool isFirstSlot,
 		auroraIntra.send(pack(serData), dataType);
 		//debugFwdCnt <= debugFwdCnt + 1;
 	endrule
-
 
 	//RECEIVE A7 -> V7 rules
 	FIFO#(Tuple2#(DataIfc, PacketType)) receiveQ <- mkFIFO();

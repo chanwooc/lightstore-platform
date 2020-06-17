@@ -553,8 +553,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	interface dmaReadClient = dmaReadClientVec;
 
 	interface Top_Pins pins;
-		interface aurora_fmc1 = flashCtrl.aurora;
-		interface aurora_clk_fmc1 = gt_clk_fmcs[0].aurora_clk;
+		interface aurora_fmc0 = flashCtrl.aurora;
+		interface aurora_clk_fmc0 = gt_clk_fmcs[0].aurora_clk;
 `ifdef LED_AURORA
 		interface LEDS leds;
 			method Bit#(LedsWidth) leds = flashCtrl.debug.getAuroraStatus;

@@ -560,11 +560,11 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	interface dmaReadClient = vec(re.dmaClient);
 
 	interface Top_Pins pins;
-		interface aurora_fmc1 = flashCtrls[0].aurora;
-		interface aurora_clk_fmc1 = gt_clk_fmcs[0].aurora_clk;
+		interface aurora_fmc0 = flashCtrls[0].aurora;
+		interface aurora_clk_fmc0 = gt_clk_fmcs[0].aurora_clk;
 `ifdef TWO_FLASH_CARDS
-		interface aurora_fmc2 = flashCtrls[1].aurora;
-		interface aurora_clk_fmc2 = gt_clk_fmcs[1].aurora_clk;
+		interface aurora_fmc1 = flashCtrls[1].aurora;
+		interface aurora_clk_fmc1 = gt_clk_fmcs[1].aurora_clk;
 `endif
 	endinterface
 endmodule

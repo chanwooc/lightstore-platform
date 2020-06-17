@@ -487,26 +487,32 @@ int main(int argc, const char **argv)
 
 	fprintf(stderr, "Initializing Connectal & DMA...\n");
 
+	fprintf(stderr, "1\n");
 	// Device initialization
 	device = new FlashRequestProxy(IfcNames_FlashRequestS2H);
 	FlashIndication deviceIndication(IfcNames_FlashIndicationH2S);
 	
+	fprintf(stderr, "2\n");
 	// Memory-allocation for DMA
 	DmaBuffer* srcDmaBuf = new DmaBuffer(srcAlloc_sz);
 	DmaBuffer* dstDmaBuf = new DmaBuffer(dstAlloc_sz);
 
+	fprintf(stderr, "3\n");
 	srcBuffer = (unsigned int*)srcDmaBuf->buffer();
 	dstBuffer = (unsigned int*)dstDmaBuf->buffer();
 
+	fprintf(stderr, "4\n");
 	srcDmaBuf->cacheInvalidate(0, 1);
 	dstDmaBuf->cacheInvalidate(0, 1);
 
+	fprintf(stderr, "5\n");
 	ref_srcAlloc = srcDmaBuf->reference();
 	ref_dstAlloc = dstDmaBuf->reference();
 
+	fprintf(stderr, "6\n");
+
 	fprintf(stderr, "ref_dstAlloc = %x\n", ref_dstAlloc); 
 	fprintf(stderr, "ref_srcAlloc = %x\n", ref_srcAlloc); 
-
 
 	device->setDmaWriteRef(ref_dstAlloc);
 	device->setDmaReadRef(ref_srcAlloc);
@@ -621,8 +627,10 @@ int main(int argc, const char **argv)
 		fprintf(stderr, "[TEST] READ ON WRITTEN BLOCKS (BStart: %d, BCnt: %d, PStart: %d, PCnt: %d) STARTED!\n", blkStart, blkCnt, pageStart, pageCnt); 
 		testRead(device, blkStart, blkCnt, pageStart, pageCnt, true /* checkRead */);
 		fprintf(stderr, "[TEST] READ ON WRITTEN BLOCKS DONE!\n" ); 
+		sleep(2);
 	}
 #endif
+
 
 #if defined(TEST_WRITE_SPEED)
 	{
@@ -658,6 +666,7 @@ int main(int argc, const char **argv)
 
 		clock_gettime(CLOCK_REALTIME, & now);
 		fprintf(stderr, "SPEED: %f MB/s\n", (NUM_CARDS*8192.0*NUM_BUSES*CHIPS_PER_BUS*blkCnt*pageCnt/1000000)/timespec_diff_sec(start,now));
+		sleep(2);
 	}
 #endif
 

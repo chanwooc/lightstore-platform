@@ -24,13 +24,13 @@ interface AuroraIfc;
 endinterface
 
 (* synthesize *)
-module mkAuroraIntra1#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110) (AuroraIfc);
+module mkAuroraIntra0#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst110) (AuroraIfc);
 	Clock cur_clk <- exposeCurrentClock;
 	Reset cur_rst <- exposeCurrentReset;
 
 `ifndef BSIM
 	// init_clk is configured to match the frequency of user_clk (110MHz) for Ultrascale designs
-	//  vc707 (7-series) can also allows 110 MHz init clock frequency
+	//  vc707 (7-series) also allows 110 MHz init clock frequency
 	Clock init_clk_i = clk110;
 
 	Reset system_rst <- mkAsyncReset(16, cur_rst, init_clk_i);  // system reset should be min 6 user_clk(110MHz) cycles
