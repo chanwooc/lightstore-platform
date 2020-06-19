@@ -1,4 +1,5 @@
-CONNECTALDIR=../../tools/connectal/
+BASEDIR=$(abspath ../../)
+CONNECTALDIR=$(BASEDIR)/tools/connectal
 
 # Auto-top variables
 S2H_INTERFACES=FlashRequest:Main.request
@@ -26,11 +27,6 @@ NUMBER_OF_RENGINES=2 # Flash Write (DMA Read)
 NUMBER_OF_WENGINES=1 # Flash Read  (DMA Write) # Needs a MemWriteEngine Patch
 CONNECTALFLAGS += -D NumReadClients=$(NUMBER_OF_RENGINES) -D NumWriteClients=$(NUMBER_OF_WENGINES) # --bscflags " -D NumWriteEngines=$(NUMBER_OF_WENGINES) "
 
-ip.%:
-	make gen.$(*)
-	BOARD=$(*) make aurora_intra
-
-.PHONY: aurora_intra
 
 # per-platform definitions
 ifeq ($(BOARD), bluesim)
@@ -63,15 +59,14 @@ CONNECTALFLAGS += \
 	--bsvpath ../../platform/aurora_intra/aurora_8b10b_zcu/ \
 	--verilog ../../platform/aurora_intra/aurora_8b10b_zcu/ \
 	--xci $(CONNECTALDIR)/out/$(BOARD)/aurora_8b10b_zcu/aurora_8b10b_zcu.xci \
-	--constraint ../../platform/aurora_intra/aurora_8b10b_zcu/aurora_8b10b_zcu_exdes.xdc \
-	--constraint $(NOHOST_XDC) \
 	--implconstraint ../../platform/aurora_intra/aurora_8b10b_zcu/aurora_8b10b_zcu_exdes.xdc \
 	--implconstraint $(NOHOST_XDC) 
 
-$(IPDIR)/$(BOARD)/aurora_8b10b_zcu/aurora_8b10b_zcu.xci: ../../coregen/synth-aurora-intra-zcu.tcl
-	cd $(BOARD); vivado -mode batch -source ../../../coregen/synth-aurora-intra-zcu.tcl
+AURORA_INTRA0=$(CONNECTALDIR)/out/$(BOARD)/aurora_8b10b_fmc0/aurora_8b10b_zcu.xci
+prebuild:: $(AURORA_INTRA0)
 
-aurora_intra: $(IPDIR)/$(BOARD)/aurora_8b10b_zcu/aurora_8b10b_zcu.xci
+$(AURORA_INTRA0): $(BASEDIR)/coregen/synth-aurora-intra-zcu.tcl
+	(cd $(BOARD); vivado -mode batch -source $<)
 
 else ifeq ($(BOARD), vc707g2)
 NOHOST_XDC = ../../misc/nohost_vc707.xdc
@@ -86,10 +81,12 @@ CONNECTALFLAGS += \
 	--implconstraint $(NOHOST_XDC) \
 	--implconstraint ../../platform/aurora_intra/aurora_8b10b_vc707/aurora_8b10b_fmcs_exdes.xdc \
 
-$(IPDIR)/$(BOARD)/aurora_8b10b_fmc1/aurora_8b10b_fmc0.xci: ../../coregen/synth-aurora-intra-vc707-fmc0.tcl
-	cd $(BOARD); vivado -mode batch -source ../../../coregen/synth-aurora-intra-vc707-fmc0.tcl
+AURORA_INTRA0=$(CONNECTALDIR)/out/$(BOARD)/aurora_8b10b_fmc0/aurora_8b10b_fmc0.xci
+prebuild:: $(AURORA_INTRA0)
 
-aurora_intra: $(IPDIR)/$(BOARD)/aurora_8b10b_fmc0/aurora_8b10b_fmc0.xci
+$(AURORA_INTRA0): $(BASEDIR)/coregen/synth-aurora-intra-vc707-fmc0.tcl
+	(cd $(BOARD); vivado -mode batch -source $<)
+
 endif
 
 include $(CONNECTALDIR)/Makefile.connectal

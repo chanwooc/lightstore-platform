@@ -4,6 +4,7 @@ import Clocks :: *;
 import DefaultValue :: *;
 import Xilinx :: *;
 import XilinxCells :: *;
+import ConnectalClocks::*;
 import ConnectalXilinxCells::*;
 
 import AuroraCommon::*;
@@ -28,14 +29,16 @@ module mkAuroraIntra0#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst11
 	Clock cur_clk <- exposeCurrentClock;
 	Reset cur_rst <- exposeCurrentReset;
 
+	B2C b2aclk <- mkB2C;
 `ifndef BSIM
-	// init_clk is configured to match the frequency of user_clk (110MHz) for Ultrascale designs
-	//  vc707 (7-series) also allows 110 MHz init clock frequency
 	Clock init_clk_i = clk110;
 
-	Reset system_rst <- mkAsyncReset(16, cur_rst, init_clk_i);  // system reset should be min 6 user_clk(110MHz) cycles
-	MakeResetIfc gt_rst_ifc <- mkReset(8, True, init_clk_i); // gt_reset should be min 6 init_clk cycles
-	Reset gt_rst = gt_rst_ifc.new_rst;
+	Reset system_rst <- mkSyncReset(12, cur_rst, b2aclk.c);  // system reset should be min 6 user_clk(110MHz) cycles & deasserted synchronously to it
+
+	//MakeResetIfc gt_rst_ifc <- mkReset(8, True, init_clk_i); // gt_reset should be min 6 init_clk cycles
+	//Reset gt_rst = gt_rst_ifc.new_rst;
+	Reset gt_rst <- mkSyncReset(8, cur_rst, init_clk_i); // gt_reset should be min 6 init_clk cycles
+
 	AuroraImportIfc#(4) auroraIntraImport <- mkAuroraImport_8b10b_zcu(gt_clk_p, gt_clk_n, init_clk_i, system_rst, gt_rst);
 `else
 	AuroraImportIfc#(4) auroraIntraImport <- mkAuroraImport_8b10b_bsim;
@@ -43,6 +46,11 @@ module mkAuroraIntra0#(Clock gt_clk_p, Clock gt_clk_n, Clock clk110, Reset rst11
 
 	Clock aclk = auroraIntraImport.aurora_clk;
 	Reset arst = auroraIntraImport.aurora_rst;
+
+	C2B aclk2b <- mkC2B(aclk, clocked_by b2aclk.c);
+	rule drive_clk_system_rst;
+		b2aclk.inputclock(aclk2b.o);
+	endrule
 
 	Reg#(Bit#(32)) gearboxSendCnt <- mkReg(0);
 	Reg#(Bit#(32)) gearboxRecCnt <- mkReg(0);
