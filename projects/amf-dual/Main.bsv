@@ -152,8 +152,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 	Reset init_reset = derivedReset;
 `endif
 
-	//let aftl <- mkAFTL128;
-	let aftl <- mkAFTLBRAM128; // use BRAMFIFO for reqQ
+	let aftl <- mkAFTL128;
+	//let aftl <- mkAFTLBRAM128; // use BRAMFIFO for reqQ (worse timing)
 
 	Reg#(Bool) aftlLoaded <- mkReg(False);
 	FIFO#(Bool) aftlLoadedRespQ <- mkFIFO;

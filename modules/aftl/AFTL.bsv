@@ -557,7 +557,7 @@ module mkAFTL#(Bool isReqBramQ, Integer cmdQDepth)(AFTLIfc);
 			let blkinfo_vec_erased = map(eraseBlkInfoEntry, blkinfo_vec);
 			if (typeQ4 == 0) blkinfo_vec_erased = map(markBadEntry, blkinfo_vec);
 
-			Bit#(8) sel_vec = 1 << block_lower;
+			Bit#(BlkInfoEntriesPerWord) sel_vec = 1 << block_lower;
 
 			blkinfo_vec = zipWith3(muxBlkInfoEntry, unpack(sel_vec), blkinfo_vec, blkinfo_vec_erased);
 		end
