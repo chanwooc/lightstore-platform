@@ -1,5 +1,6 @@
 import FIFOF::*;
 import FIFO::*;
+import BarrelShifter::*;
 
 interface StreamingDeserializerIfc#(type tFrom, type tTo);
 	method ActionValue#(tTo) deq;
@@ -29,7 +30,18 @@ module mkStreamingDeserializer (StreamingDeserializerIfc#(tFrom, tTo))
 		inQ.deq;
 
 		let inData = pack(in);
-		Bit#(tToSz) nextBuffer = outBuffer | (zeroExtend(inData)<<outCounter);
+
+		// Orig
+		// Bit#(tToSz) nextBuffer = outBuffer | (zeroExtend(inData)<<outCounter);
+
+		// Barrel - alternative (two barrel shifters for deserializer)
+		let req1 = BarrelBitReq{ data: zeroExtend(inData), shiftBy: truncate(outCounter), isShiftLeft: True, isRotate: False };
+		Bit#(tToSz) nextBuffer = outBuffer | barrelBitShift( req1 );
+
+		// Barrel - (share one barrel shifter for deserializer) - Worse Timing
+		// let req1 = BarrelBitReq{ data: zeroExtend(inData), shiftBy: truncate(outCounter), isShiftLeft: True, isRotate: True };
+		// Bit#(tToSz) rotated = barrelBitShift(req1);
+		// Bit#(tToSz) nextBuffer = outBuffer | ( rotated & ~((1<<outCounter)-1)  );
 
 		if ( outCounter + fromInteger(fromSz) > fromInteger(toSz) ) begin
 			let over = outCounter + fromInteger(fromSz) - fromInteger(toSz);
@@ -37,7 +49,16 @@ module mkStreamingDeserializer (StreamingDeserializerIfc#(tFrom, tTo))
 			if ( cont ) begin
 				outCounter <= over;
 				let minus = fromInteger(toSz) - outCounter;
-				outBuffer <= (zeroExtend(inData) >> minus);
+				// Orig
+				// outBuffer <= (zeroExtend(inData) >> minus);
+
+				// Barrel - alternative (separate shifter)
+				let req2 = BarrelBitReq{ data: zeroExtend(inData), shiftBy: truncate(minus), isShiftLeft: False, isRotate: False };
+				outBuffer <= barrelBitShift( req2 );
+
+				// Barrel - (sharing the one above)
+				// outBuffer <= rotated & ((1<<outCounter)-1);
+
 				//$display( "%x >%d %d %x", inData, over,outCounter, inData >> minus );
 			end else begin
 				outCounter <= 0;
@@ -92,9 +113,15 @@ module mkStreamingSerializer (StreamingSerializerIfc#(tFrom, tTo))
 
 	rule serialize;
 		Bit#(tFromSz) inBufferData = fromMaybe(?, inBuffer);
-		Bit#(tToSz) outData = truncate(inBufferData>>inCounter);
 
-	
+		// Orig
+		// Bit#(tToSz) outData = truncate(inBufferData>>inCounter);
+
+		// Barrel
+		BarrelBitReq#(tFromSz)
+		  req1 = BarrelBitReq{ data: inBufferData, shiftBy: truncate(inCounter), isShiftLeft: False, isRotate: False };
+		Bit#(tToSz) outData = truncate(barrelBitShift( req1 ));
+
 		if ( !isValid(inBuffer) ) begin
 			inQ.deq;
 			inBuffer <= tagged Valid inQ.first;
@@ -116,7 +143,14 @@ module mkStreamingSerializer (StreamingSerializerIfc#(tFrom, tTo))
 				inBuffer <= tagged Valid fromData;
 
 				let over = inCounter + fromInteger(toSz) - fromInteger(fromSz);
-				Bit#(tToSz) combData = truncate( fromData << (fromInteger(toSz) -over)) | outData;
+
+				// Orig
+				// Bit#(tToSz) combData = truncate( fromData << (fromInteger(toSz) -over)) | outData;
+				
+				// Barrel - (cannot share the one above)
+				BarrelBitReq#(tFromSz)
+				  req2 = BarrelBitReq{ data: fromData, shiftBy: truncate(fromInteger(toSz)-over), isShiftLeft: True, isRotate: False };
+				Bit#(tToSz) combData = truncate(barrelBitShift( req2 )) | outData;
 				
 				outQ.enq(tuple2(unpack(combData), True));
 				inCounter <= over;
