@@ -4,10 +4,6 @@ import ClientServer::*;
 import SpecialFIFOs::*;
 import Randomizable::*;
 
-function Vector#(v, el) rotateRBy(Vector#(v, el) vect, UInt#(logv) n) provisos (Log#(v, logv));
-	return reverse(rotateBy(reverse(vect), n));
-endfunction
-
 // Valid shiftBy value: 0~n-1
 typedef struct {
 	Bit#(n) data;
@@ -31,20 +27,27 @@ function Bit#(n) barrelBitShift (BarrelBitReq#(n) req) ;
 	Vector#(TAdd#(TLog#(n),1), Bit#(n)) stageIn = newVector;
 	stageIn[0] = req.data;
 
-	for (Integer stage=0; stage < numLevels; stage = stage+1) begin
-		Integer shiftBy = 2**stage;
+	// Vector-based rotateBy implementes Barrel-shifting and offers better timing
+	if (req.isRotate) begin
+		stageIn[numLevels] = (req.isShiftLeft)? rotateBitsBy(req.data, unpack(req.shiftBy)): reverseBits(rotateBitsBy(reverseBits(req.data), unpack(req.shiftBy)));
+	end
+	else begin
+		// Processing from the MSB (stage = numLevels-1) resulted in worse timing
+		for (Integer stage=0; stage < numLevels; stage = stage+1) begin
+			Integer shiftBy = 2**(stage);
 
-		stageIn[stage+1] = stageIn[stage];
-		Bit#(TAdd#(n, n)) rotate_replica = {stageIn[stage], stageIn[stage]};
+			stageIn[stage+1] = stageIn[stage];
+			Bit#(TAdd#(n, n)) rotate_replica = {stageIn[stage], stageIn[stage]};
 
-		if (req.shiftBy[stage] == 1) begin // shift only if the stage bit is '1'
-			if(req.isRotate) begin
-				stageIn[stage+1] = (req.isShiftLeft)? truncateLSB( rotate_replica << fromInteger(shiftBy) )
-													: truncate( rotate_replica >> fromInteger(shiftBy) );
-			end
-			else begin
-				stageIn[stage+1] = (req.isShiftLeft)? stageIn[stage] << fromInteger(shiftBy)
-													: stageIn[stage] >> fromInteger(shiftBy);
+			if (req.shiftBy[stage] == 1) begin // shift only if the stage bit is '1'
+				//if(req.isRotate) begin
+				//	stageIn[stage+1] = (req.isShiftLeft)? truncateLSB( rotate_replica << fromInteger(shiftBy) )
+				//										: truncate( rotate_replica >> fromInteger(shiftBy) );
+				//end
+				//else begin
+					stageIn[stage+1] = (req.isShiftLeft)? stageIn[stage] << fromInteger(shiftBy)
+														: stageIn[stage] >> fromInteger(shiftBy);
+				//end
 			end
 		end
 	end
@@ -77,20 +80,28 @@ function Bit#(TMul#(n, csz)) barrelChunkShift (BarrelChunkReq#(n, csz) req) ;
 	Vector#(TAdd#(TLog#(n),1), Bit#(TMul#(n, csz))) stageIn = newVector;
 	stageIn[0] = req.data;
 
-	for (Integer stage=0; stage < numLevels; stage = stage+1) begin
-		Integer shiftBy = valueOf(csz) * (2**stage);
+	// Vector-based rotateBy implementes Barrel-shifting and offers better timing
+	if (req.isRotate) begin
+		Vector#(n, Bit#(csz)) rotVec = unpack(req.data);
+		stageIn[numLevels] = pack((req.isShiftLeft)? rotateBy(rotVec, unpack(req.shiftBy)): reverse(rotateBy(reverse(rotVec), unpack(req.shiftBy))));
+	end
+	else begin
+		// Processing from the MSB (stage = numLevels-1) resulted in worse timing
+		for (Integer stage=0; stage < numLevels; stage = stage+1) begin
+			Integer shiftBy = valueOf(csz) * (2**(stage));
 
-		stageIn[stage+1] = stageIn[stage];
-		let rotate_replica = {stageIn[stage], stageIn[stage]};
+			stageIn[stage+1] = stageIn[stage];
+			let rotate_replica = {stageIn[stage], stageIn[stage]};
 
-		if (req.shiftBy[stage] == 1) begin // shift only if the stage bit is '1'
-			if(req.isRotate) begin
-				stageIn[stage+1] = (req.isShiftLeft)?  truncateLSB(rotate_replica << fromInteger(shiftBy))
-													:  truncate(rotate_replica >> fromInteger(shiftBy));
-			end
-			else begin
-				stageIn[stage+1] = (req.isShiftLeft)? stageIn[stage] << fromInteger(shiftBy)
-													: stageIn[stage] >> fromInteger(shiftBy);
+			if (req.shiftBy[stage] == 1) begin // shift only if the stage bit is '1'
+				//if(req.isRotate) begin
+				//	stageIn[stage+1] = (req.isShiftLeft)?  truncateLSB(rotate_replica << fromInteger(shiftBy))
+				//										:  truncate(rotate_replica >> fromInteger(shiftBy));
+				//end
+				//else begin
+					stageIn[stage+1] = (req.isShiftLeft)? stageIn[stage] << fromInteger(shiftBy)
+														: stageIn[stage] >> fromInteger(shiftBy);
+				//end
 			end
 		end
 	end
