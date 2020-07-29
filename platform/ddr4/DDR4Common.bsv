@@ -297,7 +297,7 @@ module mkXilinxDDR4Controller#(VDDR4_Controller_Xilinx#(`DDR4_PRM) ddr4Ifc, DDR4
 		rule process_read_response(read_data_ready);
 		  fResponse.enq(unpack(ddr4Ifc.user.app_rd_data));
 		  // rReadsPending.decr(1);
-			rReadsPending.down;
+			//rReadsPending.down;
 		endrule
 	endrule
 	
@@ -318,6 +318,7 @@ module mkXilinxDDR4Controller#(VDDR4_Controller_Xilinx#(`DDR4_PRM) ddr4Ifc, DDR4
 		endmethod
 
 		method ActionValue#(Bit#(ddr4datasize)) read_data;
+			rReadsPending.down;
 	 fResponse.deq;
 	 return fResponse.first.data;
 		endmethod
