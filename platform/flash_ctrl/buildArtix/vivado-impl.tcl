@@ -47,23 +47,23 @@ file mkdir $outputDir
 set partname {xc7a200tfbg676-2}
 
 read_verilog [ glob {verilog/*.v} ]
-read_verilog [ glob {../../src/common/verilog/*.v} ]
-read_verilog [ glob {../../src/hw_artix/verilog/*.v} ]
-read_verilog [ glob {../../src/model_artix/verilog/*.v} ]
+read_verilog [ glob {../../common/verilog/*.v} ]
+read_verilog [ glob {../../hw_artix/verilog/*.v} ]
+read_verilog [ glob {../../model_artix/verilog/*.v} ]
 
 set_property part $partname [current_project]
 
-read_ip ../../xilinx/vio_7series/vio_7series.xci
-generate_target {Synthesis} [get_files ../../xilinx/vio_7series/vio_7series.xci]
+read_ip ../xilinx/vio_7series/vio_7series.xci
+generate_target {Synthesis} [get_files ../xilinx/vio_7series/vio_7series.xci]
 
-read_ip ../../xilinx/ila_7series/ila_7series.xci
-generate_target {Synthesis} [get_files ../../xilinx/ila_7series/ila_7series.xci]
+read_ip ../xilinx/ila_7series/ila_7series.xci
+generate_target {Synthesis} [get_files ../xilinx/ila_7series/ila_7series.xci]
 
-read_ip ../../xilinx/vio_0/vio_0.xci
-generate_target {Synthesis} [get_files ../../xilinx/vio_0/vio_0.xci]
+read_ip ../xilinx/vio_0/vio_0.xci
+generate_target {Synthesis} [get_files ../xilinx/vio_0/vio_0.xci]
 
-read_ip ../../xilinx/ila_0/ila_0.xci
-generate_target {Synthesis} [get_files ../../xilinx/ila_0/ila_0.xci]
+read_ip ../xilinx/ila_0/ila_0.xci
+generate_target {Synthesis} [get_files ../xilinx/ila_0/ila_0.xci]
 
 ############# Aurora stuff (6.6)
 #read_verilog [ glob {../../xilinx/aurora_8b10b_X0Y4_66/*.v} ]
@@ -72,9 +72,9 @@ generate_target {Synthesis} [get_files ../../xilinx/ila_0/ila_0.xci]
 #read_xdc {../../xilinx/aurora_8b10b_X0Y4_66/aurora_8b10b_X0Y4_exdes.xdc}
 ############## end Aurora stuff
 ############# Aurora stuff
-read_verilog [ glob {../../xilinx/aurora_8b10b/*.v} ]
-read_ip ../../xilinx/aurora_8b10b/aurora_8b10b/aurora_8b10b.xci
-generate_target {Synthesis} [get_files ../../xilinx/aurora_8b10b/aurora_8b10b/aurora_8b10b.xci]
+read_verilog [ glob {../xilinx/aurora_8b10b/*.v} ]
+read_ip ../xilinx/aurora_8b10b/aurora_8b10b/aurora_8b10b.xci
+generate_target {Synthesis} [get_files ../xilinx/aurora_8b10b/aurora_8b10b/aurora_8b10b.xci]
 ############## end Aurora stuff
 
 ############## Raw gtp stuff
