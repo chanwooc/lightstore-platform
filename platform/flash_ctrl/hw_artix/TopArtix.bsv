@@ -46,7 +46,7 @@ module mkTopArtix#(
 	Reset rst0 = flashCtrl.infra.sysrst0;
 
 	//Aurora
-	Clock gtp_clk_0 <- mkClockIBUFDS_GTE2(True, gtp_clk_0_p, gtp_clk_0_n, clocked_by clk0, reset_by rst0);
+	Clock gtp_clk_0 <- mkClockIBUFDS_GTE2(defaultValue, True, gtp_clk_0_p, gtp_clk_0_n, clocked_by clk0, reset_by rst0);
 	AuroraIfc auroraIfc <- mkAuroraIntra(gtp_clk_0, clocked_by clk0, reset_by rst0);
 
 	StreamingSerializerIfc#(Bit#(SerInSz), Bit#(TSub#(DataIfcSz,1))) ser <- mkStreamingSerializer(clocked_by clk0, reset_by rst0);
