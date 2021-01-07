@@ -6,6 +6,7 @@ V_DIR = $(BUILD_DIR)/verilog
 B_DIR = $(BUILD_DIR)/obj
 
 COMMON_BSV_PATH	= ../common
+EXTRABSVPATH = $(shell test -d $(BLUESPECDIR)/Libraries/FPGA && echo -p +:$(BLUESPECDIR)/Libraries/FPGA/Xilinx:$(BLUESPECDIR)/Libraries/FPGA/Altera:$(BLUESPECDIR)/Libraries/FPGA/Misc)
 
 #Synthesizable hardware controller + flash chips
 TOP_HW 				= mkTopArtix
@@ -85,7 +86,7 @@ compile:
 	@echo $(TOP_PATH)
 	mkdir -p $(V_DIR)
 	mkdir -p $(B_DIR)
-	bsc -u $(BSC_FLAGS) -verilog -vdir $(V_DIR) -bdir $(B_DIR) -info-dir $(B_DIR) -simdir $(B_DIR) -p +:$(BSV_PATH) -g $(TOP_MODULE) $(TOP_PATH)
+	bsc -u $(BSC_FLAGS) -verilog -vdir $(V_DIR) -bdir $(B_DIR) -info-dir $(B_DIR) -simdir $(B_DIR) $(EXTRABSVPATH) -p +:$(BSV_PATH) -g $(TOP_MODULE) $(TOP_PATH)
 	cd $(V_DIR); $(ROOT_DIR)/verilogcopy.sh; cd $(ROOT_DIR)
 	@echo $(MSG)...DONE
 
