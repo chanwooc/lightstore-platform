@@ -63,12 +63,11 @@ CONNECTALFLAGS += \
 	--implconstraint ../../platform/aurora_intra/aurora_8b10b_zcu/aurora_8b10b_zcu_exdes.xdc \
 	--implconstraint $(NOHOST_XDC) 
 
-$(IPDIR)/$(BOARD)/aurora_8b10b_zcu/aurora_8b10b_zcu.xci: ../../coregen/synth-aurora-intra-zcu.tcl
-	cd $(BOARD); vivado -mode batch -source ../../../coregen/synth-aurora-intra-zcu.tcl
+AURORA_INTRA0=$(CONNECTALDIR)/out/$(BOARD)/aurora_8b10b_fmc0/aurora_8b10b_zcu.xci
+prebuild:: $(AURORA_INTRA0)
 
-ip.%:
-	make gen.$(*)
-	BOARD=$(*) make IPDIR=$(IPDIR) $(IPDIR)/$(*)/aurora_8b10b_zcu/aurora_8b10b_zcu.xci
+$(AURORA_INTRA0): ../../coregen/synth-aurora-intra-zcu.tcl
+	(cd $(BOARD); vivado -mode batch -source ../$<)
 endif
 
 include $(CONNECTALDIR)/Makefile.connectal

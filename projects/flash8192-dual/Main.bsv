@@ -550,7 +550,9 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 
 		method Action debugDumpReq(Bit#(32) card);
 			if (card == 0) debugReqQ[0].enq(?);
+`ifdef TWO_FLASH_CARDS
 			else debugReqQ[1].enq(?);
+`endif
 		endmethod
 
 		method Action setDebugVals (Bit#(32) flag, Bit#(32) debugDelay) = noAction;

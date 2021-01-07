@@ -52,7 +52,11 @@ import AuroraCommon::*;
 typedef 5 HeaderFieldSz;
 typedef Bit#(HeaderFieldSz) HeaderField;
 
+`ifdef NodeCountLog
 typedef `NodeCountLog NodeCountLog;
+`else
+typedef 2 NodeCountLog;
+`endif
 typedef TExp#(NodeCountLog) NodeCount;
 
 interface AuroraEndpointUserIfc#(type t);
