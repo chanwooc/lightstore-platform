@@ -135,11 +135,11 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	//--------------------------------------------
 	// Flash Controller/Switch/Manager
 	//--------------------------------------------
-	GtClockImportIfc gt_clk_fmc1 <- mkGtClockImport;
+	GtClockImportIfc gt_clk_fmc0 <- mkGtClockImport;
 	`ifdef BSIM
-		FlashCtrlIfc flashCtrl <- mkFlashCtrlModel(gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock, init_reset);
+		FlashCtrlIfc flashCtrl <- mkFlashCtrlModel(gt_clk_fmc0.gt_clk_p_ifc, gt_clk_fmc0.gt_clk_n_ifc, init_clock, init_reset);
 	`else
-		FlashCtrlIfc flashCtrl <- mkFlashCtrl(True, gt_clk_fmc1.gt_clk_p_ifc, gt_clk_fmc1.gt_clk_n_ifc, init_clock, init_reset);
+		FlashCtrlIfc flashCtrl <- mkFlashCtrl(True, gt_clk_fmc0.gt_clk_p_ifc, gt_clk_fmc0.gt_clk_n_ifc, init_clock, init_reset);
 	`endif
 
 	FlashSwitch#(4) flashSwitch <- mkFlashSwitch; // users[1] for normal IO & users[0,2] for kt-merging
@@ -734,8 +734,8 @@ module mkMain#(Clock derivedClock, Reset derivedReset, FlashIndication indicatio
 	interface dmaReadClient = dmaReadClientVec;
 
 	interface Top_Pins pins;
-		interface aurora_fmc1 = flashCtrl.aurora;
-		interface aurora_clk_fmc1 = gt_clk_fmc1.aurora_clk;
+		interface aurora_fmc0 = flashCtrl.aurora;
+		interface aurora_clk_fmc0 = gt_clk_fmc0.aurora_clk;
 		interface LEDS leds;
 			method Bit#(LedsWidth) leds = flashCtrl.debug.getAuroraStatus;
 		endinterface

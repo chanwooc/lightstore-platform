@@ -8,4 +8,3 @@
 # set_clock_groups -asynchronous -group $pcie250 -group $connectal_main
 # set_clock_groups -asynchronous -group $pcie125 -group $connectal_derv
 # set_clock_groups -asynchronous -group $pcie250 -group $connectal_derv
-# 

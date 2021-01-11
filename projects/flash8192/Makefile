@@ -69,7 +69,7 @@ $(AURORA_INTRA0): $(BASEDIR)/coregen/synth-aurora-intra-zcu.tcl
 	(cd $(BOARD); vivado -mode batch -source $<)
 
 else ifeq ($(BOARD), vc707g2)
-NOHOST_XDC = ../../misc/nohost_vc707.xdc
+NOHOST_XDC = ../../misc/vc707.xdc
 
 CONNECTALFLAGS += --mainclockperiod=8 --derivedclockperiod=9.090
 CONNECTALFLAGS += -D DEFAULT_NOPROGRAM=1    # To suppress automatic fpga program
