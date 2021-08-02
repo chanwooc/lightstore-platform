@@ -79,7 +79,11 @@ interface FlashBusModelIfc;
 endinterface
 
 (* synthesize *)
+`ifndef SLC
 (* descending_urgency = "chipWriteAck, chipWriteAck_1, chipWriteAck_2, chipWriteAck_3, chipWriteAck_4, chipWriteAck_5, chipWriteAck_6, chipWriteAck_7" *) 
+`else
+(* descending_urgency = "chipWriteAck, chipWriteAck_1, chipWriteAck_2, chipWriteAck_3" *) 
+`endif
 module mkFlashBusModel(FlashBusModelIfc);
 	
 	Integer t_Read = 750; //read delay

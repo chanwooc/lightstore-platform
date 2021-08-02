@@ -370,7 +370,7 @@ module mkNandPhy#(
 		`ifdef SLC_NAND
 			Bit#(3) ce_encoded = ceTranslateSLC(ctrlCmdQ.first().nandCmd.ChipSel);
 		`else
-			Bit#(3) ce_encoded = ctrlCmdQ.first().nandCmd.ChipSel;
+			Bit#(3) ce_encoded = zeroExtend(ctrlCmdQ.first().nandCmd.ChipSel);
 		`endif
 		Bit#(8) cen_one_hot = ~(1 << ce_encoded);
 		cen <= cen_one_hot; //CE# low
@@ -591,7 +591,7 @@ module mkNandPhy#(
 		`ifdef SLC_NAND
 			Bit#(3) ce_encoded = ceTranslateSLC(ctrlCmdQ.first().nandCmd.ChipSel);
 		`else
-			Bit#(3) ce_encoded = ctrlCmdQ.first().nandCmd.ChipSel;
+			Bit#(3) ce_encoded = zeroExtend(ctrlCmdQ.first().nandCmd.ChipSel);
 		`endif
 		Bit#(8) cen_one_hot = ~(1 << ce_encoded);
 		cen <= cen_one_hot; //CE# low

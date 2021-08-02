@@ -40,12 +40,21 @@ tb: clean compile_hw_tb
 tb_sim: clean compile_sim_tb
 
 .PHONY: compile_hw
-compile_hw: MSG = \>\>\> Compiling HARDWARE CONTROLLER \<\<\<
+compile_hw: MSG = \>\>\> Compiling HARDWARE CONTROLLER \(MLC\) \<\<\<
 compile_hw: TOP_MODULE=$(TOP_HW)
 compile_hw: TOP_PATH=$(TOP_HW_PATH)
 compile_hw: BSV_PATH=$(TOP_HW_BSV_PATH)
 compile_hw: XDC_FILES=$(TOP_HW_XDC)
 compile_hw: compile implement
+
+.PHONY: compile_hw_slc
+compile_hw_slc: MSG = \>\>\> Compiling HARDWARE CONTROLLER \(SLC\) \<\<\<
+compile_hw_slc: TOP_MODULE=$(TOP_HW)
+compile_hw_slc: TOP_PATH=$(TOP_HW_PATH)
+compile_hw_slc: BSV_PATH=$(TOP_HW_BSV_PATH)
+compile_hw_slc: XDC_FILES=$(TOP_HW_XDC)
+compile_hw_slc: BSC_FLAGS += -D SLC
+compile_hw_slc: compile implement
 
 .PHONY: compile_verilog
 compile_verilog: MSG = \>\>\> Compiling HARDWARE CONTROLLER to Verilog \<\<\<
@@ -96,7 +105,3 @@ implement:
 
 clean:
 	rm -rf build
-
-
-
-
