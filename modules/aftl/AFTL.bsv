@@ -20,7 +20,6 @@ import DualFlashTypes::*;
 import Clocks::*;
 
 import AFTL_Types::*;
-import DividedBRAM::*;
 
 Bool verbose = False;
 
