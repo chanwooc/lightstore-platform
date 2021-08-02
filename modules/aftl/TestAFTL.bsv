@@ -18,6 +18,7 @@ import DualFlashTypes::*;
 import Clocks::*;
 
 import AFTL::*;
+import AFTL_Types::*;
 
 Integer testMax = 1024;
 Integer testMax2 = 1024+64;
@@ -114,6 +115,8 @@ module mkTestAFTL(Empty);
 
 		if(verbose) $display("req4 sent lpa: %x", lpa);
 		aftl.translateReq.put(FTLCmd{tag: 0, cmd: AftlREAD, lpa: truncate(lpa)});
+
+		if(req_cnt4 == fromInteger(testMax4-1)) $finish;
 	endrule
 
 	Reg#(Bit#(32)) resp_cnt <- mkReg(0);
