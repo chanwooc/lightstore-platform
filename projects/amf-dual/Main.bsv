@@ -38,6 +38,7 @@ import FlashCtrl::*;
 import FlashCtrlModel::*;
 
 import AFTL::*;
+import AFTL_Types::*;
 import Top_Pins::*;
 import DualFlashTypes::*;
 
@@ -623,7 +624,7 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 				tag: tag,
 				op: ERASE_BLOCK,
 				bus: truncate(bus),
-				chip: chip,
+				chip: truncate(chip),
 				block: zeroExtend(block),
 				page: 0
 			};

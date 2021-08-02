@@ -25,8 +25,13 @@ BSVPATH += $(BASEDIR)/lib \
 
 #CONNECTALFLAGS += -D DataBusWidth=256 -D IMPORT_HOSTIF -D XILINX_SYS_CLK -D USE_WIDE_WIDTH
 CONNECTALFLAGS += -D DataBusWidth=256 -D IMPORT_HOST_CLOCKS -D USE_WIDE_WIDTH
-CONNECTALFLAGS += -D TWO_FLASH_CARDS --bscflags " -D TWO_FLASH_CARDS " # two flash cards
+CONNECTALFLAGS += -D TWO_FLASH_CARDS --bscflags " -D TWO_FLASH_CARDS " # two flash cards (bscflags redundant?)
 CONNECTALFLAGS += -D DMA_WRITE_PIPELINED # Makes more sense as long as we generate reqs only if burst data is ready
+
+## SLC or MLC
+ifdef SLC
+CONNECTALFLAGS += -D SLC
+endif
 
 # per-platform definitions
 ifeq ($(BOARD), $(filter $(BOARD), bluesim verilator))
@@ -76,7 +81,6 @@ $(AURORA_INTRA0): $(BASEDIR)/coregen/synth-aurora-intra-vc707-fmc0.tcl
 	(cd $(BOARD); vivado -mode batch -source $<)
 $(AURORA_INTRA1): $(BASEDIR)/coregen/synth-aurora-intra-vc707-fmc1.tcl
 	(cd $(BOARD); vivado -mode batch -source $<)
-
 endif
 
 include $(CONNECTALDIR)/Makefile.connectal

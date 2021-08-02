@@ -42,7 +42,23 @@
 #define BLOCKS_PER_CHIP 128
 #define CHIPS_PER_BUS 8
 #define NUM_BUSES 8 // 2 if NAND_SIM set (ControllerTypes.bsv)
+#if defined(TWO_FLASH_CARDS)
 #define NUM_CARDS 2
+#else
+#define NUM_CARDS 1
+#endif
+
+#elif defined(SLC)
+// SLC
+#define PAGES_PER_BLOCK 128
+#define BLOCKS_PER_CHIP 8192
+#define CHIPS_PER_BUS 4
+#define NUM_BUSES 8
+#if defined(TWO_FLASH_CARDS)
+#define NUM_CARDS 2
+#else
+#define NUM_CARDS 1
+#endif
 
 #else
 // MLC
@@ -50,7 +66,11 @@
 #define BLOCKS_PER_CHIP 4096
 #define CHIPS_PER_BUS 8
 #define NUM_BUSES 8
+#if defined(TWO_FLASH_CARDS)
 #define NUM_CARDS 2
+#else
+#define NUM_CARDS 1
+#endif
 
 #endif
 
@@ -365,7 +385,7 @@ void testErase(FlashRequestProxy* device, int blkStart, int blkCnt) {
 	for (int blk = blkStart; blk < blkEnd; blk++){
 		for (int chip = 0; chip < CHIPS_PER_BUS; chip++){
 			for (int bus = 0; bus < NUM_BUSES; bus++){
-				for (int card = 0; card < 2; card++) {
+				for (int card = 0; card < NUM_CARDS; card++) {
 					eraseBlock(card, bus, chip, blk, waitIdleEraseTag());
 				}
 			}
@@ -530,7 +550,7 @@ int main(int argc, const char **argv)
 		readUserBuffers[t] = new char[8192];
 	}
 
-	for (int card=0; card < 2 ; card++) {
+	for (int card=0; card < NUM_CARDS ; card++) {
 		for (int blk=0; blk < BLOCKS_PER_CHIP; blk++) {
 			for (int c=0; c < CHIPS_PER_BUS; c++) {
 				for (int bus=0; bus< NUM_BUSES; bus++) {
@@ -650,7 +670,7 @@ int main(int argc, const char **argv)
 
 		int blkCnt = 16;
 		int pageStart = 0;
-		int pageCnt = 256;
+		int pageCnt = 128;
 #endif
 
 		timespec start, now;
@@ -687,10 +707,10 @@ int main(int argc, const char **argv)
 		int blkStart = rand()%(BLOCKS_PER_CHIP-128);
 		fprintf(stderr, "[Read Speed] block start: %d\n", blkStart);
 
-		int repeat = 2;
+		int repeat = 4;
 		int blkCnt = 16;
 		int pageStart = 0;
-		int pageCnt = 256;
+		int pageCnt = 128;
 #endif
 
 		timespec start, now;
