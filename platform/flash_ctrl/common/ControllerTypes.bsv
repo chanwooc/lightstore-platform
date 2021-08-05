@@ -11,14 +11,15 @@ import GetPut::*;
 //With ECC: 2 x (255B x 16 + 236B) = 8632
 typedef 8632 			PageSize;
 typedef 8224 			PageSizeUser;
-typedef 17 				PageECCBlks; //16 blocks of k=243; 1 block of k=224
+typedef 17 				PageECCBlks; // 16 blocks of k=243; 1 block of k=224
 `ifdef BSIM
 	typedef 16 			PagesPerBlock;
 	typedef 128			BlocksPerCE;
 	typedef 8 			ChipsPerBus;
 `elsif SLC
 	typedef 128 		PagesPerBlock;
-	typedef 8192 		BlocksPerCE;
+//	typedef 8192 		BlocksPerCE; // TODO (cwchung): doesn't seem to work 
+	typedef 4096 		BlocksPerCE;
 	typedef 4 			ChipsPerBus;
 `else //MLC
 	typedef 256		 	PagesPerBlock;
