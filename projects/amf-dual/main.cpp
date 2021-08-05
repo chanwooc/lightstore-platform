@@ -51,7 +51,8 @@
 #elif defined(SLC)
 // SLC
 #define PAGES_PER_BLOCK 128
-#define BLOCKS_PER_CHIP 8192
+//#define BLOCKS_PER_CHIP 8192
+#define BLOCKS_PER_CHIP 4096
 #define CHIPS_PER_BUS 4
 #define NUM_BUSES 8
 
