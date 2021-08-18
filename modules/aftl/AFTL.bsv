@@ -45,8 +45,8 @@ interface AFTLIfc;
 	interface Get#(DualFlashCmd) resp;
 	interface Get#(FTLCmd) respError;
 
-	interface BRAMServer#(Bit#(TAdd#(SegmentTSz, VirtBlkTSz)), MapEntry) map_portB;
-	interface BRAMServer#(Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)), Vector#(BlkInfoEntriesPerWord, BlkInfoEntry)) blkinfo_portB;
+	interface BRAMServer#(BlockMapAddr, MapEntry) map_portB;
+	interface BRAMServer#(BlkInfoTblAddr, Vector#(BlkInfoEntriesPerWord, BlkInfoEntry)) blkinfo_portB;
 
 	// method Action eraseAckFromFlash(Tuple2#(TagT, Bool) a);
 	// method ActionValue#(Tuple2#(TagT, Bool)) eraseAckToHost;
@@ -87,7 +87,7 @@ module mkAFTL#(Bool isReqBramQ, Integer cmdQDepth)(AFTLIfc);
 	BRAM_Configure map_conf = defaultValue;
 	map_conf.latency = 2; // output register; TODO: 2-cycle latency for reads; better timing?
 	map_conf.outFIFODepth = 4;
-	BRAM2Port#(Bit#(TAdd#(SegmentTSz, VirtBlkTSz)), MapEntry) blockmap <- mkBRAM2Server(map_conf);
+	BRAM2Port#(BlockMapAddr, MapEntry) blockmap <- mkBRAM2Server(map_conf);
 
 	// ** Block Info Table **
 	//   addr: {Card, Bus, Chip, Block} >> BlkInfoSelSz;
@@ -95,7 +95,7 @@ module mkAFTL#(Bool isReqBramQ, Integer cmdQDepth)(AFTLIfc);
 	BRAM_Configure blk_conf = defaultValue;
 	blk_conf.latency = 2; // output register; TODO: 2-cycle latency for reads; better timing?
 	blk_conf.outFIFODepth = 4;
-	BRAM2Port#(Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)), Vector#(BlkInfoEntriesPerWord, BlkInfoEntry)) blkinfo <- mkBRAM2Server(blk_conf);
+	BRAM2Port#(BlkInfoTblAddr, Vector#(BlkInfoEntriesPerWord, BlkInfoEntry)) blkinfo <- mkBRAM2Server(blk_conf);
 	// BRAM2PortBE#(Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)), Vector#(BlkInfoEntriesPerWord, BlkInfoEntry), TDiv#(TMul#(SizeOf#(BlkInfoEntry), BlkInfoEntriesPerWord), 8)) blkinfo <- mkBRAM2ServerBE(blk_conf);
 
 	// FIFO#(FTLCmd) procQ <- mkPipelinedFIFO; // Size == 1, Only 1 req in-flight
@@ -272,7 +272,7 @@ module mkAFTL#(Bool isReqBramQ, Integer cmdQDepth)(AFTLIfc);
 			ChipT chip = curCmd.fcmd.chip;
 			Bit#(TSub#(BlockTSz, BlkInfoSelSz)) block_upper = truncate(blkScanReqCnt);
 
-			Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)) addr =
+			BlkInfoTblAddr addr = 
 					truncate({curCmd.card, bus, chip, block_upper});
 
 			blkinfo.portA.request.put (
@@ -416,7 +416,7 @@ module mkAFTL#(Bool isReqBramQ, Integer cmdQDepth)(AFTLIfc);
 		ChipT chip = curCmd.fcmd.chip;
 		BlockT block = truncate(curCmd.fcmd.block);
 
-		Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)) addr =
+		BlkInfoTblAddr addr =
 			truncate({curCmd.card, bus, chip, block} >> valueOf(BlkInfoSelSz));
 
 		//$display("updateBlkinfo3 addr %d", addr);
@@ -457,7 +457,7 @@ module mkAFTL#(Bool isReqBramQ, Integer cmdQDepth)(AFTLIfc);
 		BlockT block = truncate(curCmd.fcmd.block);
 		BlkInfoSelT block_lower = truncate(block);
 
-		Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)) addr =
+		BlkInfoTblAddr addr =
 			truncate({curCmd.card, bus, chip, block} >> valueOf(BlkInfoSelSz));
 
 		if (typeQ4 <= 1) begin

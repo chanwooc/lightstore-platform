@@ -74,6 +74,8 @@ typedef struct {
 	Bit#(TSub#(16, SizeOf#(MapStatus))) block; // physical block#
 } MapEntry deriving (Bits, Eq); // 16-bit (2-bytes) mapping entry
 
+typedef Bit#(TAdd#(SegmentTSz, VirtBlkTSz)) BlockMapAddr;
+
 
 // ** Physical Block Information Table **
 //   input: Physical {Card, Bus, Chip, Block}
@@ -96,3 +98,4 @@ typedef struct {
 typedef 8 BlkInfoEntriesPerWord;
 typedef TLog#(BlkInfoEntriesPerWord) BlkInfoSelSz;
 typedef Bit#(BlkInfoSelSz) BlkInfoSelT;
+typedef Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)) BlkInfoTblAddr;
