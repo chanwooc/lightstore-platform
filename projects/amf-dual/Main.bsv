@@ -85,8 +85,10 @@ interface AmfRequest;
 	method Action askAftlLoaded();
 	method Action setAftlLoaded();
 
-	method Action updateMapping(Bit#(19) seg_virtblk, Bit#(1) allocated, Bit#(14) mapped_block);
-	method Action readMapping(Bit#(19) seg_virtblk);
+	// MLC: seg+virtblk = 12-bit(4096) + 7-bit(128)
+	// SLC: seg+virtblk = 12-bit(4096) + 6-bit(64)
+	method Action updateMapping(Bit#(32) seg_virtblk, Bit#(1) allocated, Bit#(14) mapped_block);
+	method Action readMapping(Bit#(32) seg_virtblk);
 	method Action updateBlkInfo(Bit#(16) phyaddr_upper, Vector#(8, Bit#(16)) blkinfo_vec);
 	method Action readBlkInfo(Bit#(16) phyaddr_upper);
 
@@ -558,25 +560,27 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 	endrule
 
 	function BlkInfoEntry convertToBlkinfo(Bit#(16) ent);
-		BlkStatus new_status = 
-			case(ent[15:14])
-				2'b00: FREE_BLK;
-				2'b01: USED_BLK;
-				2'b10: BAD_BLK;
-				2'b11: DIRTY_BLK;
-			endcase;
-		return BlkInfoEntry{status: new_status, erase: truncate(ent)};
+		//BlkStatus new_status = 
+		//	case(ent[15:14])
+		//		2'b00: FREE_BLK;
+		//		2'b01: USED_BLK;
+		//		2'b10: BAD_BLK;
+		//		2'b11: DIRTY_BLK;
+		//	endcase;
+		//return BlkInfoEntry{status: new_status, erase: truncate(ent)};
+		return unpack(ent);
 	endfunction
 
 	function Bit#(16) convertBlkinfo(BlkInfoEntry entry);
-		Bit#(2) new_status = 
-			case(entry.status)
-				FREE_BLK: 0;
-				USED_BLK: 1;
-				BAD_BLK: 2;
-				DIRTY_BLK: 3;
-			endcase;
-		return {new_status, entry.erase};
+		//Bit#(2) new_status = 
+		//	case(entry.status)
+		//		FREE_BLK: 0;
+		//		USED_BLK: 1;
+		//		BAD_BLK: 2;
+		//		DIRTY_BLK: 3;
+		//	endcase;
+		//return {new_status, entry.erase};
+		return pack(entry);
 	endfunction
 
 	rule mapReadResp;
@@ -659,27 +663,34 @@ module mkMain#(Clock derivedClock, Reset derivedReset, AmfIndication indication)
 			else debugReqQ[1].enq(?);
 		endmethod
 
-		method Action updateMapping(Bit#(19) seg_virtblk, Bit#(1) allocated, Bit#(14) mapped_block);
+		method Action updateMapping(Bit#(32) seg_virtblk, Bit#(1) allocated, Bit#(14) mapped_block);
 			MapStatus new_status = (allocated==1)? ALLOCATED : NOT_ALLOCATED;
 			let new_entry = MapEntry{status: new_status, block: mapped_block};
+			BlockMapAddr map_addr = truncate(seg_virtblk);
+
 			aftl.map_portB.request.put(
-				BRAMRequest{write: True, responseOnWrite: False, address: truncate(seg_virtblk), datain: new_entry} // truncate due to BSIM
+				BRAMRequest{write: True, responseOnWrite: False, address: map_addr, datain: new_entry}
 			);
 		endmethod
-		method Action readMapping(Bit#(19) seg_virtblk);
+		method Action readMapping(Bit#(32) seg_virtblk);
+			BlockMapAddr map_addr = truncate(seg_virtblk);
 			aftl.map_portB.request.put(
-				BRAMRequest{write: False, responseOnWrite: False, address: truncate(seg_virtblk), datain: ?} // truncate due to BSIM
+				BRAMRequest{write: False, responseOnWrite: False, address: map_addr, datain: ?}
 			);
 		endmethod
 		method Action updateBlkInfo(Bit#(16) phyaddr_upper, Vector#(8, Bit#(16)) blkinfo_vec);
 			let new_entry = map(convertToBlkinfo, reverse(blkinfo_vec));
+			BlkInfoTblAddr tbl_addr = truncate(phyaddr_upper);
+
 			aftl.blkinfo_portB.request.put(
-				BRAMRequest{write: True, responseOnWrite: False, address: truncate(phyaddr_upper), datain: new_entry} // truncate due to BSIM
+				BRAMRequest{write: True, responseOnWrite: False, address: tbl_addr, datain: new_entry}
 			);
 		endmethod
 		method Action readBlkInfo(Bit#(16) phyaddr_upper);
+			BlkInfoTblAddr tbl_addr = truncate(phyaddr_upper);
+
 			aftl.blkinfo_portB.request.put(
-				BRAMRequest{write: False, responseOnWrite: False, address: truncate(phyaddr_upper), datain: ?} // truncate due to BSIM
+				BRAMRequest{write: False, responseOnWrite: False, address: tbl_addr, datain: ?}
 			);
 		endmethod
 	endinterface

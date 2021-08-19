@@ -20,6 +20,7 @@ import DualFlashTypes::*;
 import Clocks::*;
 
 import AFTL_Types::*;
+import DividedBRAM::*;
 
 Bool verbose = False;
 
@@ -85,17 +86,19 @@ module mkAFTL#(Bool isReqBramQ, Integer cmdQDepth)(AFTLIfc);
 	//   addr: {Segment #, Virt Blk #}
 	//   data: MapEntry{ 2-bit MapStatus, 14-bit Mapped Physical Block # }
 	BRAM_Configure map_conf = defaultValue;
-	map_conf.latency = 2; // output register; TODO: 2-cycle latency for reads; better timing?
-	map_conf.outFIFODepth = 4;
-	BRAM2Port#(BlockMapAddr, MapEntry) blockmap <- mkBRAM2Server(map_conf);
+	map_conf.latency = 1; // output register; TODO: 2-cycle latency for reads; better timing?
+	map_conf.outFIFODepth = 3;
+	// BRAM2Port#(BlockMapAddr, MapEntry) blockmap <- mkBRAM2Server(map_conf);
+	DividedBRAM2Port#(BlockMapAddr, MapEntry, 2) blockmap <- mkDividedBRAM(map_conf);
 
 	// ** Block Info Table **
 	//   addr: {Card, Bus, Chip, Block} >> BlkInfoSelSz;
 	//   data: BlkInfoEntriesPerWord * BlkInfoEntry{ 2-bit BlkStatus, 14-bit PE }
 	BRAM_Configure blk_conf = defaultValue;
-	blk_conf.latency = 2; // output register; TODO: 2-cycle latency for reads; better timing?
-	blk_conf.outFIFODepth = 4;
-	BRAM2Port#(BlkInfoTblAddr, Vector#(BlkInfoEntriesPerWord, BlkInfoEntry)) blkinfo <- mkBRAM2Server(blk_conf);
+	blk_conf.latency = 1; // output register; TODO: 2-cycle latency for reads; better timing?
+	blk_conf.outFIFODepth = 3;
+	// BRAM2Port#(BlkInfoTblAddr, Vector#(BlkInfoEntriesPerWord, BlkInfoEntry)) blkinfo <- mkBRAM2Server(blk_conf);
+	DividedBRAM2Port#(BlkInfoTblAddr, Vector#(BlkInfoEntriesPerWord, BlkInfoEntry), 2) blkinfo <- mkDividedBRAM(blk_conf);
 	// BRAM2PortBE#(Bit#(TSub#(TAdd#(SegmentTSz, VirtBlkTSz), BlkInfoSelSz)), Vector#(BlkInfoEntriesPerWord, BlkInfoEntry), TDiv#(TMul#(SizeOf#(BlkInfoEntry), BlkInfoEntriesPerWord), 8)) blkinfo <- mkBRAM2ServerBE(blk_conf);
 
 	// FIFO#(FTLCmd) procQ <- mkPipelinedFIFO; // Size == 1, Only 1 req in-flight

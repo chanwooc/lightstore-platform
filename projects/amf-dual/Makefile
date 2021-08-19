@@ -41,7 +41,7 @@ CONNECTALFLAGS += --bscflags " -D BSIM -D SIM_BRAM -D SIM_DMA_WRITE_LATENCY=1 " 
 CONNECTALFLAGS += --bsvpath $(BASEDIR)/platform/aurora_intra/aurora_8b10b_vcu108  # use vc707 simulation model
 
 else ifeq ($(BOARD), vcu108)
-CONNECTALFLAGS += --mainclockperiod=8 --derivedclockperiod=9.090
+CONNECTALFLAGS += --mainclockperiod=5 --derivedclockperiod=9.090
 CONNECTALFLAGS += -D DEFAULT_NOPROGRAM=1    # To suppress automatic fpga program
 
 NOHOST_XDC = $(BASEDIR)/misc/vcu108.xdc
